@@ -47,6 +47,10 @@ The last part of the file seems to be a 32 element array of 13 byte values that 
 c2, 01, 0a, 0a, 08, 4a, 47, 16, 4b, 11, 13, 0c, 0d,
 c2, 01, 0a, 0a, 08, 4a, 47, 16, 4b, 11, 13, 0c, 0d,
 
+What are their 32 of? 
+- Midi> CC Mappings
+
+
 Looking at the first bits:
 
 Blank: (120bpm)
@@ -75,6 +79,19 @@ The demo: (139 bpm)
 139 (bpm) in binary: 1000 1011
 
 These are LE 32 bit floats:  <0000 XXXX>
+
+Midi CC Mappings
+Default: 
+- CC Cutoff 74
+- CC resonance 71
+- CC Sample Attach 22
+- CC Sample Decay 75
+- CC Reverb Send 17
+- CC Delay Send 19
+- CC Overdrive 12
+- CC Bit depth 13
+
+These match up with the final 8 values
 
 ### patterns
 

@@ -110,19 +110,18 @@ impl Project {
     }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Default)]
 pub struct Settings {
-    pub attrs: SettingsAttrs,
-    pub rest: Vec<u8>,
-}
-
-impl fmt::Debug for Settings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Settings")
-            .field("attrs", &self.attrs)
-            .field("rest", &format!("{} bytes: {:02x?}...", self.rest.len(), &&self.rest[0..100.min(self.rest.len())]))
-            .finish()
-    }
+    pub name: String,
+    pub directory: String,
+    pub bpm: f32,
+    pub jack_cc_mapping: Vec<CCMapping>,
+    pub usb_cc_mapping: Vec<CCMapping>,
+    // TODO
+    pub x20: Vec<u8>, // Unknown 5 bytes
+    pub xa8: Vec<u8>, // Unknown 2 bytes
+    pub xb0: Vec<u8>, // Unknown 2 bytes
+    pub x90: Vec<u8>, // Unknown 11? bytes
 }
 
 impl Settings {
@@ -134,28 +133,17 @@ impl Settings {
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
-        let mut attrs = SettingsAttrs::default();
-        SettingsAttrs::attrs_from_reader(&reader, &mut attrs)?;
+        let mut attrs = Self::default();
+        Self::attrs_from_reader(&reader, &mut attrs)?;
 
-        Ok(Self {
-            attrs,
-            rest: reader.rest(),
-        })
+        attrs.jack_cc_mapping = (0..16).map(|_| CCMapping::from_reader(&reader) )
+            .collect::<Result<Vec<CCMapping>>>()?;
+        attrs.usb_cc_mapping = (0..16).map(|_| CCMapping::from_reader(&reader) )
+            .collect::<Result<Vec<CCMapping>>>()?;
+
+        Ok(attrs)
     }
-}
 
-#[derive(PartialEq, Clone, Default, Debug)]
-pub struct SettingsAttrs {
-    pub name: String,
-    pub directory: String,
-    pub bpm: f32,
-    pub x20: Vec<u8>, // Unknown 5 bytes
-    pub xa8: Vec<u8>, // Unknown 2 bytes
-    pub xb0: Vec<u8>, // Unknown 2 bytes
-    pub x90: Vec<u8>, // Unknown 11? bytes
-}
-
-impl SettingsAttrs {
     fn attrs_from_reader(reader: &Reader, settings: &mut Self) -> Result<()> {
         let mut tag = reader.read();
         while tag != 0xc2 { // Guessing that elements of the array are tagged with 0xC2
@@ -174,7 +162,7 @@ impl SettingsAttrs {
                 0x90 => settings.x90 = reader.read_bytes(11).to_vec(),
                 0xA8 => settings.xa8 = reader.read_bytes(2).to_vec(),
                 0xB0 => settings.xb0 = reader.read_bytes(2).to_vec(),
-                _ => (),
+                t => panic!("Unknown tag: {}", t),
             }
             tag = reader.read();
         }
@@ -183,9 +171,57 @@ impl SettingsAttrs {
     }
 }
 
+impl fmt::Debug for Settings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Settings")
+            .field("name", &self.name)
+            .field("directory", &self.directory)
+            .field("bpm", &self.bpm)
+            .field("x20", &self.x20)
+            .field("xa8", &self.xa8)
+            .field("xb0", &self.xb0)
+            .field("x90", &self.x90)
+            .finish()
+    }
+}
+
+
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct CCMapping {
+    pub u_first_bytes: [u8; 4], // TODO
+    pub cutoff: u8,
+    pub resonance: u8,
+    pub sample_attack: u8,
+    pub sample_decay: u8,
+    pub reverb_send: u8,
+    pub delay_send: u8,
+    pub overdrive: u8,
+    pub bit_depth: u8,
+}
+
+impl CCMapping {
+    fn from_reader(reader: &Reader) -> Result<Self> {
+        reader.read(); // First byte probably tag (0xC2)
+        Ok(Self {
+            u_first_bytes: reader.read_bytes(4).try_into().unwrap(),
+            cutoff: reader.read(),
+            resonance: reader.read(),
+            sample_attack: reader.read(),
+            sample_decay: reader.read(),
+            reverb_send: reader.read(),
+            delay_send: reader.read(),
+            overdrive: reader.read(),
+            bit_depth: reader.read(),
+        })
+    }
+}
+
+
+
 #[derive(PartialEq, Clone)]
 pub struct Samples {
-    pub rest: Vec<u8>,
+    pub rest: Vec<u8>, // TODO
 }
 impl Samples {
     pub fn read(path: &Path) -> Result<Self> {
@@ -215,7 +251,7 @@ impl fmt::Debug for Samples {
 #[derive(PartialEq, Clone)]
 pub struct Pattern {
     pub number: u8,
-    pub rest: Vec<u8>,
+    pub rest: Vec<u8>, // TODO
     pub tracks: [Option<Track>; 8],
 }
 impl Pattern {
@@ -313,7 +349,7 @@ impl Track {
 
 #[derive(PartialEq, Clone)]
 pub struct TrackVariation {
-    pub rest: Vec<u8>,
+    pub rest: Vec<u8>, // TODO
 }
 
 impl TrackVariation {
