@@ -1,0 +1,13 @@
+[package]
+name = "play-files"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+arr_macro = "0.2.1"
+byteorder = "1.4.3"
+glob = "0.3.1"
+regex = "1.7"
+
+[dev-dependencies]
+slice-diff-patch = "1.2.1"
