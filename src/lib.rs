@@ -67,6 +67,19 @@ impl Reader {
         std::str::from_utf8(b).expect("invalid utf-8 sequence in string").to_string()
     }
 
+    fn read_variable_quantity(&self) -> usize {
+        let mut bytes: [u8; 4] = [0; 4];
+        for i in 0..4 {
+            let b = self.read();
+            bytes[i] = b & 0b01111111;
+            if b & 0b10000000 == 0 { break; }
+            // If we're in our last loop, we shouldn't make it this far:
+            if i == 3 { panic!("More bytes than expected in a variable quantity")}
+        }
+
+        bytes.iter().enumerate().fold(0, |r, (i, &b)| r + ((b as usize) << (i*7)))
+    }
+
     fn pos(&self) -> usize {
         *self.position.borrow()
     }
@@ -146,7 +159,7 @@ impl Settings {
 
     fn attrs_from_reader(reader: &Reader, settings: &mut Self) -> Result<()> {
         let mut tag = reader.read();
-        while tag != 0xc2 { // Guessing that elements of the array are tagged with 0xC2
+        while tag != 0xc2 { // Elements in the CCMapping begin with 0xC2
             match tag {
                 // name
                 0x12 => settings.name = reader.read_string(reader.read() as usize),
@@ -166,7 +179,7 @@ impl Settings {
             }
             tag = reader.read();
         }
-        reader.step_back();
+        reader.step_back(); // Replace the last 0xC2
         Ok(())
     }
 }
@@ -202,7 +215,7 @@ pub struct CCMapping {
 
 impl CCMapping {
     fn from_reader(reader: &Reader) -> Result<Self> {
-        reader.read(); // First byte probably tag (0xC2)
+        assert_eq!(reader.read(), 0xC2); // First byte probably tag (0xC2)
         Ok(Self {
             u_first_bytes: reader.read_bytes(4).try_into().unwrap(),
             cutoff: reader.read(),
@@ -251,8 +264,10 @@ impl fmt::Debug for Samples {
 #[derive(PartialEq, Clone)]
 pub struct Pattern {
     pub number: u8,
+    pub audio_tracks: [Track; 8],
+    pub midi_tracks: [Track; 8],
     pub rest: Vec<u8>, // TODO
-    pub tracks: [Option<Track>; 8],
+    pub track_files: [Option<TrackFile>; 8],
 }
 impl Pattern {
     /// Read a pattern directory
@@ -282,7 +297,7 @@ impl Pattern {
         Ok(patterns)
     }
 
-    /// Read a particular pattern file. Will also read any tracks
+    /// Read a particular pattern file. Will also read any track files that match the pattern number
     pub fn read(path: &Path, number: u8) -> Result<Self> {
         let mut file = File::open(path)
             .map_err(|_| ParseError(format!("Cannot read pattern file: {:?}", &path)))?;
@@ -291,13 +306,21 @@ impl Pattern {
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
+        let audio_tracks = (0..8).map(|track| Track::from_reader(&reader, track, TrackType::Audio))
+            .collect::<Result<Vec<Track>>>()?;
+
+        let midi_tracks = (0..8).map(|track| Track::from_reader(&reader, track, TrackType::Midi))
+            .collect::<Result<Vec<Track>>>()?;
+
         let rest = reader.rest();
 
-        let tracks = Track::read_tracks(&path.parent().unwrap(), number)?;
+        let track_files = TrackFile::read_tracks(&path.parent().unwrap(), number)?;
            Ok(Self {
                number,
+               audio_tracks: audio_tracks.try_into().unwrap(),
+               midi_tracks: midi_tracks.try_into().unwrap(),
                rest,
-               tracks,
+               track_files,
            })
     }
 
@@ -305,20 +328,105 @@ impl Pattern {
 
 impl fmt::Debug for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Samples")
+        f.debug_struct("Pattern")
             .field("number", &self.number)
-            .field("tracks", &self.tracks)
+            .field("audio_tracks", &self.audio_tracks)
+            .field("midi_tracks", &self.midi_tracks)
+            .field("track_files", &self.track_files)
             .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
             .finish()
     }
 }
 
 #[derive(PartialEq, Clone, Debug)]
+pub enum TrackType {
+    Audio,
+    Midi
+}
+
+#[derive(PartialEq, Clone)]
 pub struct Track {
-    pub variations: [Option<TrackVariation>; 16],
+    pub ty: TrackType,
+    pub number: usize,
+    pub steps: [Step; 64],
+    pub rest: Vec<u8>, // TODO
 }
 
 impl Track {
+    fn from_reader(reader: &Reader, number: usize, ty: TrackType) -> Result<Self> {
+        assert_eq!(reader.read(), 0x0A); // First tag (0x0A)
+        let track_len = reader.read_variable_quantity();
+        // println!("Reading track {:?} {} with len {}", ty, number, track_len);
+
+        let start_pos = reader.pos();
+        let steps = (0..64).map(|step| Step::from_reader(reader, step))
+            .collect::<Result<Vec<Step>>>()?;
+        let bytes_advanced = reader.pos() - start_pos;
+
+        let rest = reader.read_bytes(track_len - bytes_advanced); // Unknown data
+        // println!("rest of track {}: {:?}", number, &rest);
+        Ok(Self {
+            ty,
+            number,
+            steps: steps.try_into().unwrap(),
+            rest: rest.to_vec(),
+        })
+    }
+}
+
+impl fmt::Debug for Track {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Track")
+            .field("type", &self.ty)
+            .field("number", &self.number)
+            .field("steps", &&self.steps[0..8])
+            .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
+            .finish()
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Step {
+    pub number: usize,
+    pub rest: Vec<u8>, // TODO
+}
+
+impl Step {
+    fn from_reader(reader: &Reader, number: usize) -> Result<Self> {
+        assert_eq!(reader.read(), 0x0A, "Error reading {}nth step", number); // first byte tag (0x0A)
+        let len = reader.read_variable_quantity(); // Length of step data
+
+        let start_pos = reader.pos();
+        // println!("{}nth step, length {} ({:02x})", number, len, len);
+        assert_eq!(reader.read(), 0x0A); // Second tag (0x0A)
+        let num_elements = reader.read_variable_quantity(); // Length of step data
+        assert_eq!(num_elements, 44); // I've never seen a value that's not 44
+        let bytes_advanced = reader.pos() - start_pos;
+
+        let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
+        Ok(Self {
+            number,
+            rest: rest.to_vec(),
+        })
+    }
+}
+
+impl fmt::Debug for Step {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Step {} rest: {:?} (len: {})",
+               self.number, &self.rest, self.rest.len())
+    }
+}
+
+
+
+
+#[derive(PartialEq, Clone, Debug)]
+pub struct TrackFile {
+    pub variations: [Option<TrackVariation>; 16],
+}
+
+impl TrackFile {
     pub fn read_tracks(path: &Path, pattern_number: u8) -> Result<[Option<Self>; 8]> {
         Ok((0..8).map(|track| {
             let mut track_files = glob(&format!("{}/{}-{}-*.track",
@@ -371,7 +479,7 @@ impl TrackVariation {
 
 impl fmt::Debug for TrackVariation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Samples")
+        f.debug_struct("TrackVariation")
             .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
             .finish()
     }

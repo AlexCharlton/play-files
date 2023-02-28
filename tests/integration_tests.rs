@@ -11,6 +11,7 @@ struct ExampleProjects {
     c4_on_1: Project,
     empty_notes_on_1_3: Project,
     single_empty_note: Project,
+    sample_st_2_trk_1_2: Project,
     believe_it: Project,
     the_demo: Project,
 }
@@ -21,6 +22,7 @@ impl ExampleProjects {
     const C4_ON_1: &str = "c4 on 1";
     const EMPTY_NOTES_ON_1_3: &str = "empty notes on 1+3";
     const SINGLE_EMPTY_NOTE: &str = "single empty note";
+    const SAMPLE_ST_2_TRK_1_2: &str = "sample st 2 trk 1+2";
     const THE_DEMO: &str = "The demo";
 
     fn load() -> Self {
@@ -30,6 +32,7 @@ impl ExampleProjects {
             c4_on_1: Self::project(Self::C4_ON_1),
             empty_notes_on_1_3: Self::project(Self::EMPTY_NOTES_ON_1_3),
             single_empty_note: Self::project(Self::SINGLE_EMPTY_NOTE),
+            sample_st_2_trk_1_2: Self::project(Self::SAMPLE_ST_2_TRK_1_2),
             believe_it: Self::project(Self::BELIEVE_IT),
             the_demo: Self::project(Self::THE_DEMO),
         }
@@ -47,12 +50,16 @@ lazy_static! {
 #[test]
 fn it_works() {
     dbg!(&PROJECTS.blank);
-    dbg!(&PROJECTS._400bpm);
+    //dbg!(&PROJECTS._400bpm);
+    dbg!(&PROJECTS.sample_st_2_trk_1_2);
+    dbg!(&PROJECTS.believe_it);
+    //dbg!(&PROJECTS.the_demo);
 
     // dbg!(diff_diff(&blank.settings.rest, &_400_bpm.settings.rest));
 
     // let mut buf = [0; 4];
     // LittleEndian::write_f32(&mut buf, 120.0);
+
     // dbg!(format!("{:02x?}", &buf));
     // LittleEndian::write_f32(&mut buf, 400.0);
     // dbg!(format!("{:02x?}", &buf));
@@ -61,10 +68,6 @@ fn it_works() {
     // BigEndian::write_f32(&mut buf, 400.0);
     // dbg!(format!("{:02x?}", &buf));
 
-    // dbg!(project(C4_ON_1));
-    // dbg!(project(EMPTY_NOTES_ON_1_3));
-    // dbg!(project(SINGLE_EMPTY_NOTE));
-    // dbg!(project(BELIEVE_IT));
 }
 
 #[test]
