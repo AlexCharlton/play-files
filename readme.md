@@ -4,7 +4,6 @@ A library for parsing Polyend Play projects into Rust structs.
 
 ## TODO
 Substantial:
-- Do stuff with track files
 - Midi Step parsing
 - Parse `samplesMetadata`
 - Lots of unknown `settings`
@@ -13,4 +12,6 @@ Substantial:
 
 Smaller:
 - Unknown footer for Steps
+- Unknown footer attrs for Tracks
 - Unknown footer for Project files
+- Unknown footer for Notes

@@ -6,7 +6,7 @@ use std::io::Read;
 use std::path::Path;
 use std::rc::Rc;
 
-// use arr_macro::arr;
+use arr_macro::arr;
 use byteorder::{ByteOrder, LittleEndian};
 use glob::glob;
 use regex::Regex;
@@ -99,6 +99,10 @@ impl Reader {
 
     fn step_back(&self) {
         *self.position.borrow_mut() -= 1;
+    }
+
+    fn buffer_len(&self) -> usize {
+        self.buffer.len()
     }
 
     fn rest(&self) -> Vec<u8> {
@@ -276,13 +280,15 @@ impl fmt::Debug for Samples {
     }
 }
 
+
+type TrackVariations = [Option<Track>; 16];
+
 #[derive(PartialEq, Clone)]
 pub struct Pattern {
     pub number: u8,
-    pub audio_tracks: [Track; 8],
-    pub midi_tracks: [Track; 8],
+    pub audio_tracks: [TrackVariations; 8],
+    pub midi_tracks: [TrackVariations; 8],
     pub rest: Vec<u8>, // TODO
-    pub track_files: [Option<TrackFile>; 8],
 }
 impl Pattern {
     /// Read a pattern directory
@@ -329,25 +335,66 @@ impl Pattern {
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
+        let mut audio_tracks = arr![arr![None; 16]; 8];
+        let mut midi_tracks = arr![arr![None; 16]; 8];
         // dbg!(path);
-        let audio_tracks = (0..8)
-            .map(|track| Track::from_reader(&reader, track, TrackType::Audio))
-            .collect::<Result<Vec<Track>>>()?;
-
-        let midi_tracks = (0..8)
-            .map(|track| Track::from_reader(&reader, track, TrackType::Midi))
-            .collect::<Result<Vec<Track>>>()?;
+        for track in 0..8 {
+            audio_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, TrackType::Audio, false)?);
+        }
+        for track in 0..8 {
+            midi_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, TrackType::Midi, false)?);
+        }
 
         let rest = reader.rest();
 
-        let track_files = TrackFile::read_tracks(&path.parent().unwrap(), number)?;
+        for mut variation in Self::read_variations(&path.parent().unwrap(), number)? {
+            let track = variation.number;
+            let v = variation.variation;
+            if track < 8 {
+                audio_tracks[track][v] = Some(variation);
+            } else {
+                variation.number -= 8;
+                midi_tracks[track - 8][v] = Some(variation);
+            }
+        }
+
         Ok(Self {
             number,
             audio_tracks: audio_tracks.try_into().unwrap(),
             midi_tracks: midi_tracks.try_into().unwrap(),
             rest,
-            track_files,
         })
+    }
+
+    fn read_variations(path: &Path, pattern_number: u8) -> Result<Vec<Track>> {
+        let mut ret: Vec<Track> = vec![];
+        for track in 0..8 {
+            let mut track_files = glob(&format!(
+                "{}/{}-{}-*.track",
+                path.to_str().unwrap(),
+                pattern_number,
+                track
+            )).map_err(|_| ParseError(format!("Could not read track dir")))?;
+
+            if track_files.next().is_some() {
+
+                for variation in 0..16 {
+                    let track_path = path.join(&format!(
+                        "{}-{}-{}.track",
+                        pattern_number, track, variation
+                    ));
+                    if track_path.is_file() {
+                        ret.push(Track::read(&track_path, track, variation)?);
+                    }
+                }
+            }
+        }
+        Ok(ret)
+    }
+
+    /// Get the first variation of a track
+    pub fn audio_track(&self, n: usize) -> &Track {
+        self.audio_tracks[n][0].as_ref().unwrap()
     }
 }
 
@@ -357,7 +404,6 @@ impl fmt::Debug for Pattern {
             .field("number", &self.number)
             .field("audio_tracks", &self.audio_tracks)
             .field("midi_tracks", &self.midi_tracks)
-            .field("track_files", &self.track_files)
             // .field(
             //     "rest",
             //     &format!(
@@ -380,19 +426,25 @@ pub enum TrackType {
 pub struct Track {
     pub ty: TrackType,
     pub number: usize,
+    pub variation: usize,
     pub steps: Vec<Step>,
     // Percentage 25-75
     pub swing: u8,
     pub play_mode: u8,
     pub track_speed: TrackSpeed,
     attrs: TrackAttrs,
-    // rest: Vec<u8>,
 }
 
 impl Track {
-    fn from_reader(reader: &Reader, number: usize, ty: TrackType) -> Result<Self> {
-        assert_eq!(reader.read(), 0x0A); // First tag (0x0A)
-        let track_len = reader.read_variable_quantity();
+    fn from_reader(reader: &Reader, number: usize, variation: usize, ty: TrackType, from_file: bool) -> Result<Self> {
+        let track_len = {
+            if from_file {
+                reader.buffer_len()
+            } else {
+                assert_eq!(reader.read(), 0x0A); // First tag (0x0A)
+                reader.read_variable_quantity()
+            }
+        };
         // println!("Reading track {:?} {} with len {}", ty, number, track_len);
 
         let start_pos = reader.pos();
@@ -401,22 +453,32 @@ impl Track {
             .collect::<Result<Vec<Step>>>()?;
 
         let attrs = TrackAttrs::from_reader(reader, track_len + start_pos)?;
-
         assert!(attrs.num_steps > 0 && attrs.num_steps < 65);
 
         let bytes_advanced = reader.pos() - start_pos;
-        // let rest = reader.read_bytes(track_len - bytes_advanced);
         assert_eq!(bytes_advanced, track_len);
         Ok(Self {
             ty,
             number,
+            variation,
             steps: steps[0..(attrs.num_steps as usize)].try_into().unwrap(),
             swing: attrs.swing,
             play_mode: attrs.play_mode,
             track_speed: attrs.track_speed,
             attrs,
-            // rest: rest.to_vec(),
         })
+    }
+
+    pub fn read(path: &Path, track_number: usize, variation_number: usize) -> Result<Self> {
+        let mut file = File::open(path)
+            .map_err(|_| ParseError(format!("Cannot read track file: {:?}", &path)))?;
+
+        let mut buf: Vec<u8> = vec![];
+        file.read_to_end(&mut buf).unwrap();
+        let reader = Reader::new(buf);
+
+        let track_type = if track_number < 8 { TrackType::Audio } else { TrackType::Midi };
+        Track::from_reader(&reader, track_number, variation_number, track_type, true)
     }
 }
 
@@ -425,15 +487,12 @@ impl fmt::Debug for Track {
         f.debug_struct("Track")
             .field("type", &self.ty)
             .field("number", &self.number)
+            .field("variation", &self.variation)
             .field("steps", &self.steps)
             .field("swing", &self.swing)
             .field("track_speed", &self.track_speed)
             .field("play_mode", &self.play_mode)
             // .field("attrs", &self.attrs)
-            // .field(
-            //     "rest",
-            //     &format!("{} bytes: {:02x?}", self.rest.len(), &&self.rest),
-            // )
             .finish()
     }
 }
@@ -447,7 +506,7 @@ pub struct TrackAttrs {
     track_speed: TrackSpeed,
     // TODO, unknown values:
     ux18: u8,
-    ux01: u8,
+    ux30: u8,
     ux4a: Vec<u8>,
 }
 
@@ -482,12 +541,15 @@ impl TrackAttrs {
                     }
                 }
                 0x18 => attrs.ux18 = reader.read(),
-                0x01 => attrs.ux01 = reader.read(),
+                0x30 => attrs.ux30 = reader.read(),
                 0x4a => {
                     let len = reader.read();
                     attrs.ux4a = reader.read_bytes(len as usize).to_vec();
                 },
-                x => println!("Warning: encountered unknown track tag {:02X}", x),
+                x => {
+                    reader.read(); // Discard
+                    println!("Warning: encountered unknown track tag {:02X}", x);
+                },
             }
         }
 
@@ -551,9 +613,6 @@ pub struct Step {
     /// -10000 is -100 cents; 10000 is +100 cents; 100 = 1 cent
     pub micro_tune: i16,
 
-    /// unknown data TODO
-    pub u1: i16,
-
     pub rest: Vec<u8>, // TODO
 }
 
@@ -590,8 +649,6 @@ impl Step {
         let chance_action = LittleEndian::read_u16(reader.read_bytes(2));
         let micro_move = LittleEndian::read_i16(reader.read_bytes(2));
 
-        let u1 = LittleEndian::read_i16(reader.read_bytes(2));
-
         let bytes_advanced = reader.pos() - start_pos;
         // Rest appears to be always nothing for empty notes and a fixed set of 6 bytes otherwise
         let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
@@ -618,7 +675,6 @@ impl Step {
             delay,
             overdrive,
             bit_depth,
-            u1,
             rest: rest.to_vec(),
         })
     }
@@ -651,7 +707,7 @@ impl fmt::Debug for Step {
         //     .finish()
 
         // Alternate, compact format
-        write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({}) unknown({}) rest: {:?} (len: {})",
+        write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({})", //  rest: {:?} (len: {})
                self.number,
                self.volume,
                self.note,
@@ -673,87 +729,7 @@ impl fmt::Debug for Step {
                self.delay,
                self.overdrive,
                self.bit_depth,
-               self.u1,
-               &self.rest, self.rest.len())
-    }
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub struct TrackFile {
-    pub variations: [Option<TrackVariation>; 16],
-}
-
-impl TrackFile {
-    pub fn read_tracks(path: &Path, pattern_number: u8) -> Result<[Option<Self>; 8]> {
-        Ok((0..8)
-            .map(|track| {
-                let mut track_files = glob(&format!(
-                    "{}/{}-{}-*.track",
-                    path.to_str().unwrap(),
-                    pattern_number,
-                    track
-                ))
-                .map_err(|_| ParseError(format!("Could not read track dir")))?;
-
-                if track_files.next().is_some() {
-                    Ok(Some(Self {
-                        variations: (0..16)
-                            .map(|variation| {
-                                let track_path = path.join(&format!(
-                                    "{}-{}-{}.track",
-                                    pattern_number, track, variation
-                                ));
-                                if track_path.is_file() {
-                                    Ok(Some(TrackVariation::read(&track_path)?))
-                                } else {
-                                    Ok(None)
-                                }
-                            })
-                            .collect::<Result<Vec<_>>>()?
-                            .try_into()
-                            .unwrap(),
-                    }))
-                } else {
-                    Ok(None)
-                }
-            })
-            .collect::<Result<Vec<Option<Self>>>>()?
-            .try_into()
-            .unwrap())
-    }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct TrackVariation {
-    pub rest: Vec<u8>, // TODO
-}
-
-impl TrackVariation {
-    pub fn read(path: &Path) -> Result<Self> {
-        let mut file = File::open(path)
-            .map_err(|_| ParseError(format!("Cannot read track file: {:?}", &path)))?;
-
-        let mut buf: Vec<u8> = vec![];
-        file.read_to_end(&mut buf).unwrap();
-        let reader = Reader::new(buf);
-
-        let rest = reader.rest();
-
-        Ok(Self { rest })
-    }
-}
-
-impl fmt::Debug for TrackVariation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TrackVariation")
-            .field(
-                "rest",
-                &format!(
-                    "{} bytes: {:?}...",
-                    self.rest.len(),
-                    &&self.rest[0..10.min(self.rest.len())]
-                ),
-            )
-            .finish()
+               // &self.rest, self.rest.len()
+        )
     }
 }
