@@ -306,6 +306,7 @@ impl Pattern {
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
+        // dbg!(path);
         let audio_tracks = (0..8).map(|track| Track::from_reader(&reader, track, TrackType::Audio))
             .collect::<Result<Vec<Track>>>()?;
 
@@ -380,14 +381,57 @@ impl fmt::Debug for Track {
             .field("type", &self.ty)
             .field("number", &self.number)
             .field("steps", &&self.steps[0..8])
-            .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
+            .field("rest", &format!("{} bytes: {:?}", self.rest.len(), &&self.rest))
             .finish()
     }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Step {
+    /// Step number, 0 indexed
     pub number: usize,
+    /// Sample number
+    pub sample: u16,
+    /// Midi note number
+    pub note: u8,
+    /// 0db at 7600; 200 = 1db
+    pub volume: u16,
+    /// -10000 is hard L, 10000 is hard right; 100 = 1%
+    pub pan: i16,
+    /// -10000 is LP100; 10000 is HP100; 100 = 1%
+    pub filter_cutoff: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub filter_resonance: u16,
+    /// 10000 is 100%; 100 = 1%
+    pub overdrive: u16,
+    /// 4-16
+    pub bit_depth: u8,
+    /// -10000 is -11/24; 10000 is +11/24
+    pub micro_move: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub reverb: i16,
+    pub delay: i16,
+    /// 0: start of sample; 32767: end of sample
+    pub sample_start: i16,
+    pub sample_end: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub sample_attack: u16,
+    pub sample_decay: u16,
+    /// Used for display/randomize only; 0xFFFF = All samples
+    pub sample_folder: u16,
+    /// 0 = Off
+    pub repeat_type: u16,
+    pub repeat_grid: u16,
+    /// 0 = Always
+    pub chance_type: u16,
+    /// 0 = Play Step
+    pub chance_action: u16,
+    /// -10000 is -100 cents; 10000 is +100 cents; 100 = 1 cent
+    pub micro_tune: i16,
+
+    /// unknown data TODO
+    pub u1: i16,
+
     pub rest: Vec<u8>, // TODO
 }
 
@@ -401,11 +445,58 @@ impl Step {
         assert_eq!(reader.read(), 0x0A); // Second tag (0x0A)
         let num_elements = reader.read_variable_quantity(); // Length of step data
         assert_eq!(num_elements, 44); // I've never seen a value that's not 44
-        let bytes_advanced = reader.pos() - start_pos;
 
+        let volume = LittleEndian::read_u16(reader.read_bytes(2));
+        let pan = LittleEndian::read_i16(reader.read_bytes(2));
+        let filter_cutoff = LittleEndian::read_i16(reader.read_bytes(2));
+        let filter_resonance = LittleEndian::read_u16(reader.read_bytes(2));
+        let bit_depth = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
+        let overdrive = LittleEndian::read_u16(reader.read_bytes(2));
+        let note = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
+        let delay = LittleEndian::read_i16(reader.read_bytes(2));
+        let reverb = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_start = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample_end = LittleEndian::read_i16(reader.read_bytes(2));
+        let micro_tune = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample_attack = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_decay = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_folder = LittleEndian::read_u16(reader.read_bytes(2));
+        let repeat_type = LittleEndian::read_u16(reader.read_bytes(2));
+        let repeat_grid = LittleEndian::read_u16(reader.read_bytes(2));
+        let chance_type = LittleEndian::read_u16(reader.read_bytes(2));
+        let chance_action = LittleEndian::read_u16(reader.read_bytes(2));
+        let micro_move = LittleEndian::read_i16(reader.read_bytes(2));
+
+        let u1 = LittleEndian::read_i16(reader.read_bytes(2));
+
+        let bytes_advanced = reader.pos() - start_pos;
+        // Rest appears to be always nothing for empty notes and a fixed set of 28 bytes otherwise
         let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
         Ok(Self {
             number,
+            sample,
+            note,
+            volume,
+            pan,
+            filter_cutoff,
+            filter_resonance,
+            micro_move,
+            micro_tune,
+            sample_start,
+            sample_end,
+            sample_attack,
+            sample_decay,
+            sample_folder,
+            repeat_type,
+            repeat_grid,
+            chance_type,
+            chance_action,
+            reverb,
+            delay,
+            overdrive,
+            bit_depth,
+            u1,
             rest: rest.to_vec(),
         })
     }
@@ -413,8 +504,55 @@ impl Step {
 
 impl fmt::Debug for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Step {} rest: {:?} (len: {})",
-               self.number, &self.rest, self.rest.len())
+        // f.debug_struct("Step")
+        //     .field("number", &self.number)
+        //     .field("volume", &self.volume)
+        //     .field("note", &self.note)
+        //     .field("sample", &self.sample)
+        //     .field("sample_start", &self.sample_start)
+        //     .field("sample_end", &self.sample_end)
+        //     .field("sample_attack", &self.sample_attack)
+        //     .field("sample_decay", &self.sample_decay)
+        //     .field("pan", &self.pan)
+        //     .field("filter_cutoff", &self.filter_cutoff)
+        //     .field("filter_resonance", &self.filter_resonance)
+        //     .field("micro_move", &self.micro_move)
+        //     .field("micro_tune", &self.micro_tune)
+        //     .field("repeat_type", &self.repeat_type)
+        //     .field("repeat_grid", &self.repeat_grid)
+        //     .field("chance_type", &self.chance_type)
+        //     .field("chance_action", &self.chance_action)
+        //     .field("reverb", &self.reverb)
+        //     .field("delay", &self.delay)
+        //     .field("overdrive", &self.overdrive)
+        //     .field("bit_depth", &self.bit_depth)
+        //     .finish()
+
+        // Alternate, compact format
+        write!(f, "Step {}: volume({}) note({}) sample({}) start-end({}-{}) attack-decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat type-grid({}-{}) chance type-action({}-{}) reverb-delay({}-{}) overdrive({}) bit-depth({}) unknown({}) rest: {:?} (len: {})",
+               self.number,
+               self.volume,
+               self.note,
+               self.sample,
+               self.sample_start,
+               self.sample_end,
+               self.sample_attack,
+               self.sample_decay,
+               self.pan,
+               self.filter_cutoff,
+               self.filter_resonance,
+               self.micro_move,
+               self.micro_tune,
+               self.repeat_type,
+               self.repeat_grid,
+               self.chance_type,
+               self.chance_action,
+               self.reverb,
+               self.delay,
+               self.overdrive,
+               self.bit_depth,
+               self.u1,
+               &self.rest, self.rest.len())
     }
 }
 

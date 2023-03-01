@@ -18,6 +18,38 @@ All v1.0.1
   - Empty project set to 400 bpm
 - Believe It
 - The demo
+- Test 1
+  - Track 1: Row of C4, First sample in bass, nothing else modified
+    - Step 4 was accidentally micromoved +100
+  - Track 2:
+    - First 4 steps C4, B8 (max note), C0 (min note), C4 microtune +100
+    - Second 4 steps: max bass sample:  C4 microtune -100, C4, C4, C4
+  - Track 3: First kick sample with sample folder selected
+    - step 1: micro move +11/24
+    - step 2: micro move -11/24
+    - step 3: repeat type: Straight (first); Repeat grid: 2 hits | 1 step (first)
+    - step 4: repeat type: Down and up (last of 17); Repeat grid: 32 hits | 8 steps (last of 16)
+    - step 5: Sample start 1500/1500 ms; sample end 0/1500ms
+    - step 6: Sample attack 100%
+    - step 7: Sample decay 100%
+  - Track 4: First kick sample without sample folder selected
+    - step 1: reverb send 100%
+    - step 2: delay send 100%
+    - step 3: 90% chance (first option); play step (first option)
+    - step 4: skip 4 | Play 5 (last option of 43 including Always); action: humanize (last option of 10)
+    - step 5: Volume +12dB
+    - step 6: Volume -infdB
+    - step 7: Volume -12dB
+  - Track 5: Track length 12; Play mode Thumper (6th option)
+    - Step 1: Volume -25; Pan 100L
+    - Step 2: Pan 100R
+    - Step 3: Filter HP100, Resonance 100%
+    - Step 4: Filter LP100, Resonance 50%
+  - Track 6: Track speed 8/1 (max value); Track swing: 25% (min value)
+    - Step 1: Overdrive 100% 4 bits
+    - Step 2: Overdrive 90%; 8 bits
+- Track 7: Empty, soloed; Track Speed: Pause (min value); Track swing: 75% (max value)
+- Track 8: Empty, muted; Track Speed: 1/16 (second to min value); Track swing: 75% (max value)
 
 ## Observations
 Believe It project structure:
@@ -194,6 +226,86 @@ The first character after the second `0x0a` always seems to be `0x2c` = 44, whic
 In `sample st 2 trk 1+2` the tracks with extra length have 6 extra bytes. Looking at more examples, I don't see any non-empty tracks that have a length other than 50.
 
 4th byte is sample number? 13th byte is note?
+
+Soloing, muting, and selection do not carry over from a load.
+
+#### `test 1** Project
+Using this to determine step values. 
+
+***
+
+First 2 bytes relate to volume.
+
+LE value of -Inf is 0
+LE value of -25dB is 2600
+LE value of -12dB is 5200
+LE value of 0dB is 7600
+LE value of +12dB is 1000
+
+1dB = 200
+
+***
+
+Second 2 bytes relate to panning
+LE value of 100L is -10000
+LE value of 100R is 10000
+
+1% pan = 100
+
+***
+
+Next 4 bytes relate to filter
+
+First 2 are the cutoff with HP100 = 10000, LP100 = 10000
+1% filter = 100
+Second 2 are the amount of resonance with 0 being 0 and 10000 = 100%
+1% resonance = 100
+
+****
+
+Next 4 bytes: Bit depth and overdrive
+Unknown: Always `16 0 0 0 `
+
+
+*** 
+
+Next 2 bytes: note
+Midi note number (second byte is 0)
+
+***
+
+Next 4 bytes: Reverb send; delay send
+First 2 negative: 10000 = -11/24
+Next 2 positive: 10000 = 11/24
+
+***
+
+Next 2 bytes: Sample number
+
+***
+
+Next 4 bytes: Sample start, sample end
+
+Min value: 0, Max value: 32767 (0x7FFF**
+
+***
+
+Next 2 bytes: microtune
+-10000-10000; 100 = 1 cent
+
+***
+
+Next 4 bytes: sample attack/decay
+0-10000 = 0-100%
+
+***
+
+Skipped a few parameters, since this is getting repetitive. We do this 22 times
+
+***
+
+Final 6 bytes: Unknown
+Always `16, 1, 24, 255, 255, 127` 
 
 #### track files
 Name: ``<patern_n>-<trackn>-<variation_n>.track``
