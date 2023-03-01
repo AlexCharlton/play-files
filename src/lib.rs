@@ -1,11 +1,10 @@
-#[allow(dead_code)]
-
-use std::fmt;
-use std::rc::Rc;
 use std::cell::RefCell;
-use std::path::Path;
+#[allow(dead_code)]
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
+use std::rc::Rc;
 
 // use arr_macro::arr;
 use byteorder::{ByteOrder, LittleEndian};
@@ -33,14 +32,15 @@ type Result<T> = std::result::Result<T, ParseError>;
 
 struct Reader {
     buffer: Vec<u8>,
-    position: Rc<RefCell<usize>>
+    position: Rc<RefCell<usize>>,
 }
 
 #[allow(dead_code)]
 impl Reader {
     fn new(buffer: Vec<u8>) -> Self {
         Self {
-            buffer, position: Rc::new(RefCell::new(0))
+            buffer,
+            position: Rc::new(RefCell::new(0)),
         }
     }
 
@@ -53,7 +53,7 @@ impl Reader {
 
     fn read_bytes(&self, n: usize) -> &[u8] {
         let p: usize = *self.position.borrow();
-        let bs = &self.buffer[p..p+n];
+        let bs = &self.buffer[p..p + n];
         *self.position.borrow_mut() += n;
         bs
     }
@@ -64,7 +64,9 @@ impl Reader {
 
     fn read_string(&self, n: usize) -> String {
         let b = self.read_bytes(n);
-        std::str::from_utf8(b).expect("invalid utf-8 sequence in string").to_string()
+        std::str::from_utf8(b)
+            .expect("invalid utf-8 sequence in string")
+            .to_string()
     }
 
     fn read_variable_quantity(&self) -> usize {
@@ -72,12 +74,19 @@ impl Reader {
         for i in 0..4 {
             let b = self.read();
             bytes[i] = b & 0b01111111;
-            if b & 0b10000000 == 0 { break; }
+            if b & 0b10000000 == 0 {
+                break;
+            }
             // If we're in our last loop, we shouldn't make it this far:
-            if i == 3 { panic!("More bytes than expected in a variable quantity")}
+            if i == 3 {
+                panic!("More bytes than expected in a variable quantity")
+            }
         }
 
-        bytes.iter().enumerate().fold(0, |r, (i, &b)| r + ((b as usize) << (i*7)))
+        bytes
+            .iter()
+            .enumerate()
+            .fold(0, |r, (i, &b)| r + ((b as usize) << (i * 7)))
     }
 
     fn pos(&self) -> usize {
@@ -98,7 +107,6 @@ impl Reader {
     }
 }
 
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct Project {
     pub settings: Settings,
@@ -109,7 +117,10 @@ pub struct Project {
 impl Project {
     pub fn read(path: &Path) -> Result<Self> {
         if !path.is_dir() {
-            return Err(ParseError(format!("Provided project dir {:?} is not a directory", &path)));
+            return Err(ParseError(format!(
+                "Provided project dir {:?} is not a directory",
+                &path
+            )));
         }
         let settings = Settings::read(&path.join("settings"))?;
         let samples = Samples::read(&path.join("samples").join("samplesMetadata"))?;
@@ -139,19 +150,21 @@ pub struct Settings {
 
 impl Settings {
     pub fn read(path: &Path) -> Result<Self> {
-        let mut file = File::open(path)
-            .map_err(|_| ParseError(format!("No settings file present")))?;
+        let mut file =
+            File::open(path).map_err(|_| ParseError(format!("No settings file present")))?;
 
-        let mut buf: Vec<u8> = vec!();
+        let mut buf: Vec<u8> = vec![];
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
         let mut attrs = Self::default();
         Self::attrs_from_reader(&reader, &mut attrs)?;
 
-        attrs.jack_cc_mapping = (0..16).map(|_| CCMapping::from_reader(&reader) )
+        attrs.jack_cc_mapping = (0..16)
+            .map(|_| CCMapping::from_reader(&reader))
             .collect::<Result<Vec<CCMapping>>>()?;
-        attrs.usb_cc_mapping = (0..16).map(|_| CCMapping::from_reader(&reader) )
+        attrs.usb_cc_mapping = (0..16)
+            .map(|_| CCMapping::from_reader(&reader))
             .collect::<Result<Vec<CCMapping>>>()?;
 
         Ok(attrs)
@@ -159,7 +172,8 @@ impl Settings {
 
     fn attrs_from_reader(reader: &Reader, settings: &mut Self) -> Result<()> {
         let mut tag = reader.read();
-        while tag != 0xc2 { // Elements in the CCMapping begin with 0xC2
+        while tag != 0xc2 {
+            // Elements in the CCMapping begin with 0xC2
             match tag {
                 // name
                 0x12 => settings.name = reader.read_string(reader.read() as usize),
@@ -198,8 +212,6 @@ impl fmt::Debug for Settings {
     }
 }
 
-
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct CCMapping {
     pub u_first_bytes: [u8; 4], // TODO
@@ -230,8 +242,6 @@ impl CCMapping {
     }
 }
 
-
-
 #[derive(PartialEq, Clone)]
 pub struct Samples {
     pub rest: Vec<u8>, // TODO
@@ -241,22 +251,27 @@ impl Samples {
         let mut file = File::open(path)
             .map_err(|_| ParseError(format!("Cannot read sample file: {:?}", &path)))?;
 
-        let mut buf: Vec<u8> = vec!();
+        let mut buf: Vec<u8> = vec![];
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
         let rest = reader.rest();
 
-        Ok(Self {
-            rest,
-        })
+        Ok(Self { rest })
     }
 }
 
 impl fmt::Debug for Samples {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Samples")
-            .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
+            .field(
+                "rest",
+                &format!(
+                    "{} bytes: {:?}...",
+                    self.rest.len(),
+                    &&self.rest[0..10.min(self.rest.len())]
+                ),
+            )
             .finish()
     }
 }
@@ -273,25 +288,33 @@ impl Pattern {
     /// Read a pattern directory
     pub fn read_patterns(path: &Path) -> Result<Vec<Self>> {
         if !path.is_dir() {
-            return Err(ParseError(format!("Provided patterns dir {:?} is not a directory", &path)));
+            return Err(ParseError(format!(
+                "Provided patterns dir {:?} is not a directory",
+                &path
+            )));
         }
 
         let mut patterns = vec![];
         for entry in glob(&format!("{}/*.pattern", path.to_str().unwrap()))
-            .map_err(|_| ParseError(format!("Could not read pattern dir")))? {
-                match entry {
-                    Ok(path) => {
-                        let re = Regex::new(r"(\d+).pattern$").unwrap();
-                        let pattern_number = if let Some(n) = re.captures(path.to_str().unwrap()) {
-                            n.get(1).unwrap().as_str().parse()
-                                .map_err(|_| ParseError(format!("Invalid pattern file name: {:?}", &path)))?
-                        } else {
-                            return Err(ParseError(format!("Invalid pattern file name: {:?}", &path)));
-                        };
-                        patterns.push(Self::read(&path, pattern_number)?);
-                    },
-                    _ => return Err(ParseError(format!("Could not read pattern dir"))),
+            .map_err(|_| ParseError(format!("Could not read pattern dir")))?
+        {
+            match entry {
+                Ok(path) => {
+                    let re = Regex::new(r"(\d+).pattern$").unwrap();
+                    let pattern_number = if let Some(n) = re.captures(path.to_str().unwrap()) {
+                        n.get(1).unwrap().as_str().parse().map_err(|_| {
+                            ParseError(format!("Invalid pattern file name: {:?}", &path))
+                        })?
+                    } else {
+                        return Err(ParseError(format!(
+                            "Invalid pattern file name: {:?}",
+                            &path
+                        )));
+                    };
+                    patterns.push(Self::read(&path, pattern_number)?);
                 }
+                _ => return Err(ParseError(format!("Could not read pattern dir"))),
+            }
         }
 
         Ok(patterns)
@@ -302,29 +325,30 @@ impl Pattern {
         let mut file = File::open(path)
             .map_err(|_| ParseError(format!("Cannot read pattern file: {:?}", &path)))?;
 
-        let mut buf: Vec<u8> = vec!();
+        let mut buf: Vec<u8> = vec![];
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
         // dbg!(path);
-        let audio_tracks = (0..8).map(|track| Track::from_reader(&reader, track, TrackType::Audio))
+        let audio_tracks = (0..8)
+            .map(|track| Track::from_reader(&reader, track, TrackType::Audio))
             .collect::<Result<Vec<Track>>>()?;
 
-        let midi_tracks = (0..8).map(|track| Track::from_reader(&reader, track, TrackType::Midi))
+        let midi_tracks = (0..8)
+            .map(|track| Track::from_reader(&reader, track, TrackType::Midi))
             .collect::<Result<Vec<Track>>>()?;
 
         let rest = reader.rest();
 
         let track_files = TrackFile::read_tracks(&path.parent().unwrap(), number)?;
-           Ok(Self {
-               number,
-               audio_tracks: audio_tracks.try_into().unwrap(),
-               midi_tracks: midi_tracks.try_into().unwrap(),
-               rest,
-               track_files,
-           })
+        Ok(Self {
+            number,
+            audio_tracks: audio_tracks.try_into().unwrap(),
+            midi_tracks: midi_tracks.try_into().unwrap(),
+            rest,
+            track_files,
+        })
     }
-
 }
 
 impl fmt::Debug for Pattern {
@@ -334,7 +358,14 @@ impl fmt::Debug for Pattern {
             .field("audio_tracks", &self.audio_tracks)
             .field("midi_tracks", &self.midi_tracks)
             .field("track_files", &self.track_files)
-            .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
+            .field(
+                "rest",
+                &format!(
+                    "{} bytes: {:?}...",
+                    self.rest.len(),
+                    &&self.rest[0..10.min(self.rest.len())]
+                ),
+            )
             .finish()
     }
 }
@@ -342,7 +373,7 @@ impl fmt::Debug for Pattern {
 #[derive(PartialEq, Clone, Debug)]
 pub enum TrackType {
     Audio,
-    Midi
+    Midi,
 }
 
 #[derive(PartialEq, Clone)]
@@ -360,12 +391,13 @@ impl Track {
         // println!("Reading track {:?} {} with len {}", ty, number, track_len);
 
         let start_pos = reader.pos();
-        let steps = (0..64).map(|step| Step::from_reader(reader, step))
+        let steps = (0..64)
+            .map(|step| Step::from_reader(reader, step))
             .collect::<Result<Vec<Step>>>()?;
         let bytes_advanced = reader.pos() - start_pos;
 
         let rest = reader.read_bytes(track_len - bytes_advanced); // Unknown data
-        // println!("rest of track {}: {:?}", number, &rest);
+                                                                  // println!("rest of track {}: {:?}", number, &rest);
         Ok(Self {
             ty,
             number,
@@ -381,7 +413,10 @@ impl fmt::Debug for Track {
             .field("type", &self.ty)
             .field("number", &self.number)
             .field("steps", &&self.steps[0..8])
-            .field("rest", &format!("{} bytes: {:?}", self.rest.len(), &&self.rest))
+            .field(
+                "rest",
+                &format!("{} bytes: {:?}", self.rest.len(), &&self.rest),
+            )
             .finish()
     }
 }
@@ -556,9 +591,6 @@ impl fmt::Debug for Step {
     }
 }
 
-
-
-
 #[derive(PartialEq, Clone, Debug)]
 pub struct TrackFile {
     pub variations: [Option<TrackVariation>; 16],
@@ -566,30 +598,41 @@ pub struct TrackFile {
 
 impl TrackFile {
     pub fn read_tracks(path: &Path, pattern_number: u8) -> Result<[Option<Self>; 8]> {
-        Ok((0..8).map(|track| {
-            let mut track_files = glob(&format!("{}/{}-{}-*.track",
-                                                path.to_str().unwrap(), pattern_number, track))
+        Ok((0..8)
+            .map(|track| {
+                let mut track_files = glob(&format!(
+                    "{}/{}-{}-*.track",
+                    path.to_str().unwrap(),
+                    pattern_number,
+                    track
+                ))
                 .map_err(|_| ParseError(format!("Could not read track dir")))?;
 
-            if track_files.next().is_some() {
-                Ok(Some(Self {
-                    variations: (0..16).map(|variation| {
-                        let track_path = path.join(&format!("{}-{}-{}.track",
-                                                            pattern_number, track, variation));
-                        if track_path.is_file() {
-                            Ok(Some(TrackVariation::read(&track_path)?))
-                        } else {
-                            Ok(None)
-                        }
-                    }).collect::<Result<Vec<_>>>()?
-                        .try_into().unwrap()
-                }))
-            } else {
-                Ok(None)
-            }
-
-        }).collect::<Result<Vec<Option<Self>>>>()?
-             .try_into().unwrap())
+                if track_files.next().is_some() {
+                    Ok(Some(Self {
+                        variations: (0..16)
+                            .map(|variation| {
+                                let track_path = path.join(&format!(
+                                    "{}-{}-{}.track",
+                                    pattern_number, track, variation
+                                ));
+                                if track_path.is_file() {
+                                    Ok(Some(TrackVariation::read(&track_path)?))
+                                } else {
+                                    Ok(None)
+                                }
+                            })
+                            .collect::<Result<Vec<_>>>()?
+                            .try_into()
+                            .unwrap(),
+                    }))
+                } else {
+                    Ok(None)
+                }
+            })
+            .collect::<Result<Vec<Option<Self>>>>()?
+            .try_into()
+            .unwrap())
     }
 }
 
@@ -603,23 +646,27 @@ impl TrackVariation {
         let mut file = File::open(path)
             .map_err(|_| ParseError(format!("Cannot read track file: {:?}", &path)))?;
 
-        let mut buf: Vec<u8> = vec!();
+        let mut buf: Vec<u8> = vec![];
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
         let rest = reader.rest();
 
-        Ok(Self {
-            rest
-        })
+        Ok(Self { rest })
     }
 }
 
 impl fmt::Debug for TrackVariation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TrackVariation")
-            .field("rest", &format!("{} bytes: {:?}...", self.rest.len(), &&self.rest[0..10.min(self.rest.len())]))
+            .field(
+                "rest",
+                &format!(
+                    "{} bytes: {:?}...",
+                    self.rest.len(),
+                    &&self.rest[0..10.min(self.rest.len())]
+                ),
+            )
             .finish()
     }
 }
-
