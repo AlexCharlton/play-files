@@ -6,62 +6,33 @@ use play_files::*;
 // use byteorder::{ByteOrder, LittleEndian, BigEndian};
 use lazy_static::lazy_static;
 
-#[allow(dead_code)]
-struct ExampleProjects {
-    blank: Project,
-    _400bpm: Project,
-    c4_on_1: Project,
-    empty_notes_on_1_3: Project,
-    single_empty_note: Project,
-    sample_st_2_trk_1_2: Project,
-    test_1: Project,
-    believe_it: Project,
-    the_demo: Project,
-}
-impl ExampleProjects {
-    const BLANK: &str = "blank";
-    const _400BPM: &str = "400 bpm";
-    const C4_ON_1: &str = "c4 on 1";
-    const EMPTY_NOTES_ON_1_3: &str = "empty notes on 1+3";
-    const SINGLE_EMPTY_NOTE: &str = "single empty note";
-    const SAMPLE_ST_2_TRK_1_2: &str = "sample st 2 trk 1+2";
-    const TEST_1: &str = "test 1";
-    const BELIEVE_IT: &str = "Believe It";
-    const THE_DEMO: &str = "The demo";
-
-    fn load() -> Self {
-        Self {
-            blank: Self::project(Self::BLANK),
-            _400bpm: Self::project(Self::_400BPM),
-            c4_on_1: Self::project(Self::C4_ON_1),
-            empty_notes_on_1_3: Self::project(Self::EMPTY_NOTES_ON_1_3),
-            single_empty_note: Self::project(Self::SINGLE_EMPTY_NOTE),
-            sample_st_2_trk_1_2: Self::project(Self::SAMPLE_ST_2_TRK_1_2),
-            test_1: Self::project(Self::TEST_1),
-            believe_it: Self::project(Self::BELIEVE_IT),
-            the_demo: Self::project(Self::THE_DEMO),
-        }
-    }
-
-    fn project(name: &str) -> Project {
-        Project::read(Path::new(&format!("./examples/projects/{}/", name))).unwrap()
-    }
+fn load_example(name: &str) -> Project {
+    Project::read(Path::new(&format!("./examples/projects/{}/", name))).unwrap()
 }
 
 lazy_static! {
-    static ref PROJECTS: ExampleProjects = ExampleProjects::load();
+    static ref BLANK: Project = load_example("blank");
+    static ref _400BPM: Project = load_example("400 bpm");
+    static ref C4_ON_1: Project = load_example("c4 on 1");
+    static ref EMPTY_NOTES_ON_1_3: Project = load_example("empty notes on 1+3");
+    static ref SINGLE_EMPTY_NOTE: Project = load_example("single empty note");
+    static ref SAMPLE_ST_2_TRK_1_2: Project = load_example("sample st 2 trk 1+2");
+    static ref TEST_1: Project = load_example("test 1");
+    static ref BELIEVE_IT: Project = load_example("Believe It");
+    static ref THE_DEMO: Project = load_example("The demo");
 }
 
 #[test]
 fn it_works() {
-    // dbg!(&PROJECTS.blank);
-    //dbg!(&PROJECTS._400bpm);
-    // dbg!(&PROJECTS.sample_st_2_trk_1_2);
-    //dbg!(&PROJECTS.believe_it);
-    //dbg!(&PROJECTS.the_demo);
-    dbg!(&PROJECTS.test_1);
+    // dbg!(&*BLANK);
+    //dbg!(&*_400BPM);
+    // dbg!(&*SAMPLE_ST_2_TRK_1_2);
+    //dbg!(&*BELIEVE_IT);
+    //dbg!(&*THE_DEMO);
+    //dbg!(&*C4_ON_1);
+    dbg!(&*TEST_1);
 
-    // dbg!(diff_diff(&blank.settings.rest, &_400_bpm.settings.rest));
+    // dbg!(diff_diff(&BLANK.settings.rest, &_400_BPM.settings.rest));
 
     // let mut buf = [0; 4];
     // LittleEndian::write_f32(&mut buf, 120.0);
@@ -73,34 +44,40 @@ fn it_works() {
     // dbg!(format!("{:02x?}", &buf));
     // BigEndian::write_f32(&mut buf, 400.0);
     // dbg!(format!("{:02x?}", &buf));
+
+    // let s = 2;
+    // dbg!(LittleEndian::read_u16(&TEST_1.patterns[0].audio_tracks[4].rest[s..s+2]));
+    // dbg!(LittleEndian::read_u16(&TEST_1.patterns[0].audio_tracks[5].rest[s..s+2]));
+    // dbg!(LittleEndian::read_u16(&TEST_1.patterns[0].audio_tracks[6].rest[s..s+2]));
+    // dbg!(LittleEndian::read_u16(&TEST_1.patterns[0].audio_tracks[7].rest[s..s+2]));
 }
 
 #[test]
 fn test_bpm() {
-    assert_eq!(PROJECTS.blank.settings.bpm, 120.0);
-    assert_eq!(PROJECTS._400bpm.settings.bpm, 400.0);
-    assert_eq!(PROJECTS.believe_it.settings.bpm, 162.0);
+    assert_eq!(BLANK.settings.bpm, 120.0);
+    assert_eq!(_400BPM.settings.bpm, 400.0);
+    assert_eq!(BELIEVE_IT.settings.bpm, 162.0);
 }
 
 #[test]
 fn test_names() {
-    assert_eq!(&PROJECTS.blank.settings.name, "blank");
-    assert_eq!(&PROJECTS._400bpm.settings.name, "400 bpm");
-    assert_eq!(&PROJECTS.believe_it.settings.name, "Believe It");
-    assert_eq!(&PROJECTS.blank.settings.directory, "/Projects");
-    assert_eq!(&PROJECTS._400bpm.settings.directory, "/Projects");
+    assert_eq!(&BLANK.settings.name, "blank");
+    assert_eq!(&_400BPM.settings.name, "400 bpm");
+    assert_eq!(&BELIEVE_IT.settings.name, "Believe It");
+    assert_eq!(&BLANK.settings.directory, "/Projects");
+    assert_eq!(&_400BPM.settings.directory, "/Projects");
 }
 
 #[test]
 fn test_midi_cc_mapping() {
-    assert_eq!(PROJECTS.blank.settings.jack_cc_mapping.len(), 16);
-    assert_eq!(PROJECTS.blank.settings.usb_cc_mapping.len(), 16);
-    assert_eq!(PROJECTS.blank.settings.jack_cc_mapping[0].cutoff, 74);
+    assert_eq!(BLANK.settings.jack_cc_mapping.len(), 16);
+    assert_eq!(BLANK.settings.usb_cc_mapping.len(), 16);
+    assert_eq!(BLANK.settings.jack_cc_mapping[0].cutoff, 74);
 }
 
 #[test]
 fn test_steps_mapping() {
-    let pat = &PROJECTS.test_1.patterns[0];
+    let pat = &TEST_1.patterns[0];
     assert_eq!(pat.audio_tracks[0].steps[0].note, 60);
     assert_eq!(pat.audio_tracks[1].steps[1].note, 119);
     assert_eq!(pat.audio_tracks[1].steps[2].note, 12);
@@ -134,4 +111,24 @@ fn test_steps_mapping() {
     assert_eq!(pat.audio_tracks[5].steps[0].overdrive, 10000);
     assert_eq!(pat.audio_tracks[5].steps[1].bit_depth, 8);
     assert_eq!(pat.audio_tracks[5].steps[1].overdrive, 8000);
+}
+
+#[test]
+fn test_track_attributes() {
+    assert_eq!(TEST_1.patterns[0].audio_tracks[0].steps.len(), 16);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[4].steps.len(), 12);
+
+    assert_eq!(TEST_1.patterns[0].audio_tracks[0].play_mode, 0);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[4].play_mode, 5);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[5].play_mode, 1);
+
+    assert_eq!(TEST_1.patterns[0].audio_tracks[0].swing, 50);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[5].swing, 25);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[6].swing, 75);
+
+
+    assert_eq!(TEST_1.patterns[0].audio_tracks[0].track_speed, TrackSpeed::Fraction(1, 1));
+    assert_eq!(TEST_1.patterns[0].audio_tracks[5].track_speed, TrackSpeed::Fraction(8, 1));
+    assert_eq!(TEST_1.patterns[0].audio_tracks[6].track_speed, TrackSpeed::Paused);
+    assert_eq!(TEST_1.patterns[0].audio_tracks[7].track_speed, TrackSpeed::Fraction(1, 16));
 }

@@ -204,10 +204,10 @@ impl fmt::Debug for Settings {
             .field("name", &self.name)
             .field("directory", &self.directory)
             .field("bpm", &self.bpm)
-            .field("x20", &self.x20)
-            .field("xa8", &self.xa8)
-            .field("xb0", &self.xb0)
-            .field("x90", &self.x90)
+            // .field("x20", &self.x20)
+            // .field("xa8", &self.xa8)
+            // .field("xb0", &self.xb0)
+            // .field("x90", &self.x90)
             .finish()
     }
 }
@@ -264,14 +264,14 @@ impl Samples {
 impl fmt::Debug for Samples {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Samples")
-            .field(
-                "rest",
-                &format!(
-                    "{} bytes: {:?}...",
-                    self.rest.len(),
-                    &&self.rest[0..10.min(self.rest.len())]
-                ),
-            )
+            // .field(
+            //     "rest",
+            //     &format!(
+            //         "{} bytes: {:?}...",
+            //         self.rest.len(),
+            //         &&self.rest[0..10.min(self.rest.len())]
+            //     ),
+            // )
             .finish()
     }
 }
@@ -358,14 +358,14 @@ impl fmt::Debug for Pattern {
             .field("audio_tracks", &self.audio_tracks)
             .field("midi_tracks", &self.midi_tracks)
             .field("track_files", &self.track_files)
-            .field(
-                "rest",
-                &format!(
-                    "{} bytes: {:?}...",
-                    self.rest.len(),
-                    &&self.rest[0..10.min(self.rest.len())]
-                ),
-            )
+            // .field(
+            //     "rest",
+            //     &format!(
+            //         "{} bytes: {:?}...",
+            //         self.rest.len(),
+            //         &&self.rest[0..10.min(self.rest.len())]
+            //     ),
+            // )
             .finish()
     }
 }
@@ -380,8 +380,13 @@ pub enum TrackType {
 pub struct Track {
     pub ty: TrackType,
     pub number: usize,
-    pub steps: [Step; 64],
-    pub rest: Vec<u8>, // TODO
+    pub steps: Vec<Step>,
+    // Percentage 25-75
+    pub swing: u8,
+    pub play_mode: u8,
+    pub track_speed: TrackSpeed,
+    attrs: TrackAttrs,
+    // rest: Vec<u8>,
 }
 
 impl Track {
@@ -394,15 +399,23 @@ impl Track {
         let steps = (0..64)
             .map(|step| Step::from_reader(reader, step))
             .collect::<Result<Vec<Step>>>()?;
-        let bytes_advanced = reader.pos() - start_pos;
 
-        let rest = reader.read_bytes(track_len - bytes_advanced); // Unknown data
-                                                                  // println!("rest of track {}: {:?}", number, &rest);
+        let attrs = TrackAttrs::from_reader(reader, track_len + start_pos)?;
+
+        assert!(attrs.num_steps > 0 && attrs.num_steps < 65);
+
+        let bytes_advanced = reader.pos() - start_pos;
+        // let rest = reader.read_bytes(track_len - bytes_advanced);
+        assert_eq!(bytes_advanced, track_len);
         Ok(Self {
             ty,
             number,
-            steps: steps.try_into().unwrap(),
-            rest: rest.to_vec(),
+            steps: steps[0..(attrs.num_steps as usize)].try_into().unwrap(),
+            swing: attrs.swing,
+            play_mode: attrs.play_mode,
+            track_speed: attrs.track_speed,
+            attrs,
+            // rest: rest.to_vec(),
         })
     }
 }
@@ -412,12 +425,86 @@ impl fmt::Debug for Track {
         f.debug_struct("Track")
             .field("type", &self.ty)
             .field("number", &self.number)
-            .field("steps", &&self.steps[0..8])
-            .field(
-                "rest",
-                &format!("{} bytes: {:?}", self.rest.len(), &&self.rest),
-            )
+            .field("steps", &self.steps)
+            .field("swing", &self.swing)
+            .field("track_speed", &self.track_speed)
+            .field("play_mode", &self.play_mode)
+            // .field("attrs", &self.attrs)
+            // .field(
+            //     "rest",
+            //     &format!("{} bytes: {:02x?}", self.rest.len(), &&self.rest),
+            // )
             .finish()
+    }
+}
+
+#[derive(PartialEq, Clone, Default, Debug)]
+pub struct TrackAttrs {
+    num_steps: u8,
+    // Percentage 25-75
+    swing: u8,
+    play_mode: u8,
+    track_speed: TrackSpeed,
+    // TODO, unknown values:
+    ux18: u8,
+    ux01: u8,
+    ux4a: Vec<u8>,
+}
+
+impl TrackAttrs {
+    fn from_reader(reader: &Reader, max_pos: usize) -> Result<Self> {
+        let mut attrs = TrackAttrs::default();
+
+        while reader.pos() < max_pos {
+            let val = reader.read();
+            match val {
+                0x10 => attrs.num_steps = reader.read(),
+                0x38 => attrs.swing = reader.read(),
+                0x40 => attrs.play_mode = reader.read(),
+                0x20 => {
+                    if let TrackSpeed::Fraction(_, d) = attrs.track_speed {
+                        attrs.track_speed = match reader.read() {
+                            0 => TrackSpeed::Paused,
+                            n => TrackSpeed::Fraction(n, d)
+                        };
+                    } else {
+                        attrs.track_speed = TrackSpeed::Fraction(reader.read(), 1)
+                    }
+                },
+                0x28 => {
+                    if let TrackSpeed::Fraction(n, _) = attrs.track_speed {
+                        attrs.track_speed = match reader.read() {
+                            0 => TrackSpeed::Paused,
+                            d => TrackSpeed::Fraction(n, d)
+                        };
+                    } else {
+                        reader.read(); // discard
+                    }
+                }
+                0x18 => attrs.ux18 = reader.read(),
+                0x01 => attrs.ux01 = reader.read(),
+                0x4a => {
+                    let len = reader.read();
+                    attrs.ux4a = reader.read_bytes(len as usize).to_vec();
+                },
+                x => println!("Warning: encountered unknown track tag {:02X}", x),
+            }
+        }
+
+        Ok(attrs)
+    }
+}
+
+#[derive(PartialEq, Clone, Debug, Copy)]
+pub enum TrackSpeed {
+    /// Numerator, Denominator
+    Fraction(u8, u8),
+    Paused,
+}
+
+impl Default for TrackSpeed {
+    fn default() -> Self {
+        Self::Paused
     }
 }
 
@@ -506,7 +593,7 @@ impl Step {
         let u1 = LittleEndian::read_i16(reader.read_bytes(2));
 
         let bytes_advanced = reader.pos() - start_pos;
-        // Rest appears to be always nothing for empty notes and a fixed set of 28 bytes otherwise
+        // Rest appears to be always nothing for empty notes and a fixed set of 6 bytes otherwise
         let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
         Ok(Self {
             number,
@@ -564,7 +651,7 @@ impl fmt::Debug for Step {
         //     .finish()
 
         // Alternate, compact format
-        write!(f, "Step {}: volume({}) note({}) sample({}) start-end({}-{}) attack-decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat type-grid({}-{}) chance type-action({}-{}) reverb-delay({}-{}) overdrive({}) bit-depth({}) unknown({}) rest: {:?} (len: {})",
+        write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({}) unknown({}) rest: {:?} (len: {})",
                self.number,
                self.volume,
                self.note,

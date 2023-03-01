@@ -1,6 +1,5 @@
 ## Example Projects
-All v1.0.1
-
+All v1.0.1:
 - blank
   - ""New project""
 - empty notes on 1&3
@@ -18,6 +17,8 @@ All v1.0.1
   - Empty project set to 400 bpm
 - Believe It
 - The demo
+
+v1.2.0:
 - Test 1
   - Track 1: Row of C4, First sample in bass, nothing else modified
     - Step 4 was accidentally micromoved +100
@@ -45,7 +46,7 @@ All v1.0.1
     - Step 2: Pan 100R
     - Step 3: Filter HP100, Resonance 100%
     - Step 4: Filter LP100, Resonance 50%
-  - Track 6: Track speed 8/1 (max value); Track swing: 25% (min value)
+  - Track 6: Track Play mode Reverse (2nd option); speed 8/1 (max value); Track swing: 25% (min value)
     - Step 1: Overdrive 100% 4 bits
     - Step 2: Overdrive 90%; 8 bits
 - Track 7: Empty, soloed; Track Speed: Pause (min value); Track swing: 75% (max value)
@@ -229,6 +230,9 @@ In `sample st 2 trk 1+2` the tracks with extra length have 6 extra bytes. Lookin
 
 Soloing, muting, and selection do not carry over from a load.
 
+Footer for track files:
+[21, 0, 0, 240, 66]
+
 #### `test 1** Project
 Using this to determine step values. 
 
@@ -286,7 +290,7 @@ Next 2 bytes: Sample number
 
 Next 4 bytes: Sample start, sample end
 
-Min value: 0, Max value: 32767 (0x7FFF**
+Min value: 0, Max value: 32767 (0x7FFF)
 
 ***
 
@@ -306,6 +310,12 @@ Skipped a few parameters, since this is getting repetitive. We do this 22 times
 
 Final 6 bytes: Unknown
 Always `16, 1, 24, 255, 255, 127` 
+
+#### track footers
+Differ in length depending on contents. Eg. setting one of track length or play mode extended the footer 2 bytes
+
+The second byte is track length. Are these tagged values? Yes!
+
 
 #### track files
 Name: ``<patern_n>-<trackn>-<variation_n>.track``
