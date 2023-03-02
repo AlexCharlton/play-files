@@ -11,4 +11,3 @@ regex = "1.7"
 
 [dev-dependencies]
 lazy_static = "1.4"
-slice-diff-patch = "1.2.1"

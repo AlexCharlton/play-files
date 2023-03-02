@@ -2,7 +2,6 @@ use std::path::Path;
 
 use play_files::*;
 
-// use slice_diff_patch::*;
 // use byteorder::{ByteOrder, LittleEndian, BigEndian};
 use lazy_static::lazy_static;
 
@@ -24,15 +23,23 @@ lazy_static! {
 
 #[test]
 fn it_works() {
-    //dbg!(&*BLANK);
+    // Make sure everything can be parsed
+    let _ = &BLANK;
+    let _ = _400BPM;
+    let _ = C4_ON_1;
+    let _ = EMPTY_NOTES_ON_1_3;
+    let _ = SINGLE_EMPTY_NOTE;
+    let _ = SAMPLE_ST_2_TRK_1_2;
+    let _ = TEST_1;
+    let _ = BELIEVE_IT;
+    let _ = THE_DEMO;
+
     //dbg!(&*_400BPM);
     //dbg!(&*SAMPLE_ST_2_TRK_1_2);
     //dbg!(&*BELIEVE_IT);
     //dbg!(&*THE_DEMO);
     //dbg!(&*C4_ON_1);
     //dbg!(&*TEST_1);
-
-    // dbg!(diff_diff(&BLANK.settings.rest, &_400_BPM.settings.rest));
 
     // let mut buf = [0; 4];
     // LittleEndian::write_f32(&mut buf, 120.0);

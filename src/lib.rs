@@ -1,15 +1,16 @@
-use std::cell::RefCell;
 #[allow(dead_code)]
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use std::rc::Rc;
 
 use arr_macro::arr;
 use byteorder::{ByteOrder, LittleEndian};
 use glob::glob;
 use regex::Regex;
+
+mod reader;
+use reader::Reader;
 
 #[derive(PartialEq)]
 pub struct ParseError(String);
@@ -29,87 +30,6 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 type Result<T> = std::result::Result<T, ParseError>;
-
-struct Reader {
-    buffer: Vec<u8>,
-    position: Rc<RefCell<usize>>,
-}
-
-#[allow(dead_code)]
-impl Reader {
-    fn new(buffer: Vec<u8>) -> Self {
-        Self {
-            buffer,
-            position: Rc::new(RefCell::new(0)),
-        }
-    }
-
-    fn read(&self) -> u8 {
-        let p: usize = *self.position.borrow();
-        let b = self.buffer[p];
-        *self.position.borrow_mut() += 1;
-        b
-    }
-
-    fn read_bytes(&self, n: usize) -> &[u8] {
-        let p: usize = *self.position.borrow();
-        let bs = &self.buffer[p..p + n];
-        *self.position.borrow_mut() += n;
-        bs
-    }
-
-    fn read_bool(&self) -> bool {
-        self.read() == 1
-    }
-
-    fn read_string(&self, n: usize) -> String {
-        let b = self.read_bytes(n);
-        std::str::from_utf8(b)
-            .expect("invalid utf-8 sequence in string")
-            .to_string()
-    }
-
-    fn read_variable_quantity(&self) -> usize {
-        let mut bytes: [u8; 4] = [0; 4];
-        for i in 0..4 {
-            let b = self.read();
-            bytes[i] = b & 0b01111111;
-            if b & 0b10000000 == 0 {
-                break;
-            }
-            // If we're in our last loop, we shouldn't make it this far:
-            if i == 3 {
-                panic!("More bytes than expected in a variable quantity")
-            }
-        }
-
-        bytes
-            .iter()
-            .enumerate()
-            .fold(0, |r, (i, &b)| r + ((b as usize) << (i * 7)))
-    }
-
-    fn pos(&self) -> usize {
-        *self.position.borrow()
-    }
-
-    fn set_pos(&self, n: usize) {
-        *self.position.borrow_mut() = n;
-    }
-
-    fn step_back(&self) {
-        *self.position.borrow_mut() -= 1;
-    }
-
-    fn buffer_len(&self) -> usize {
-        self.buffer.len()
-    }
-
-    fn rest(&self) -> Vec<u8> {
-        let p: usize = *self.position.borrow();
-        self.buffer[p..].to_vec()
-    }
-}
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Project {

@@ -8,10 +8,10 @@ Substantial:
 - Parse `samplesMetadata`
 - Lots of unknown `settings`
   - Figure out set of tags (or otherwise don't panic)
+- Make proper enums for the enum values (e.g. Chance)
 - Write files
 
 Smaller:
 - Unknown footer for Steps
 - Unknown footer attrs for Tracks
-- Unknown footer for Project files
-- Unknown footer for Notes
+- Unknown footer for Projects
