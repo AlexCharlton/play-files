@@ -201,13 +201,14 @@ impl fmt::Debug for Samples {
 }
 
 
-type TrackVariations = [Option<Track>; 16];
+type AudioTrackVariations = [Option<Track<Step>>; 16];
+type MidiTrackVariations = [Option<Track<MidiStep>>; 16];
 
 #[derive(PartialEq, Clone)]
 pub struct Pattern {
     pub number: u8,
-    pub audio_tracks: [TrackVariations; 8],
-    pub midi_tracks: [TrackVariations; 8],
+    pub audio_tracks: [AudioTrackVariations; 8],
+    pub midi_tracks: [MidiTrackVariations; 8],
     pub rest: Vec<u8>, // TODO
 }
 impl Pattern {
@@ -259,23 +260,24 @@ impl Pattern {
         let mut midi_tracks = arr![arr![None; 16]; 8];
         // dbg!(path);
         for track in 0..8 {
-            audio_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, TrackType::Audio, false)?);
+            audio_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, false)?);
         }
         for track in 0..8 {
-            midi_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, TrackType::Midi, false)?);
+            midi_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, false)?);
         }
 
         let rest = reader.rest();
 
-        for mut variation in Self::read_variations(&path.parent().unwrap(), number)? {
+        for variation in Self::read_variations(&path.parent().unwrap(), number)?.0 {
             let track = variation.number;
             let v = variation.variation;
-            if track < 8 {
-                audio_tracks[track][v] = Some(variation);
-            } else {
-                variation.number -= 8;
-                midi_tracks[track - 8][v] = Some(variation);
-            }
+            audio_tracks[track][v] = Some(variation);
+            // TODO FIXME
+            // if track < 8 {
+            // } else {
+            //     variation.number -= 8;
+            //     midi_tracks[track - 8][v] = Some(variation);
+            // }
         }
 
         Ok(Self {
@@ -286,8 +288,8 @@ impl Pattern {
         })
     }
 
-    fn read_variations(path: &Path, pattern_number: u8) -> Result<Vec<Track>> {
-        let mut ret: Vec<Track> = vec![];
+    fn read_variations(path: &Path, pattern_number: u8) -> Result<(Vec<Track<Step>>, Vec<Track<MidiStep>>)> {
+        let mut ret: Vec<Track<Step>> = vec![];
         for track in 0..8 {
             let mut track_files = glob(&format!(
                 "{}/{}-{}-*.track",
@@ -309,11 +311,11 @@ impl Pattern {
                 }
             }
         }
-        Ok(ret)
+        Ok((ret, vec![])) // TODO
     }
 
     /// Get the first variation of a track
-    pub fn audio_track(&self, n: usize) -> &Track {
+    pub fn audio_track(&self, n: usize) -> &Track<Step> {
         self.audio_tracks[n][0].as_ref().unwrap()
     }
 }
@@ -336,18 +338,11 @@ impl fmt::Debug for Pattern {
     }
 }
 
-#[derive(PartialEq, Clone, Debug)]
-pub enum TrackType {
-    Audio,
-    Midi,
-}
-
 #[derive(PartialEq, Clone)]
-pub struct Track {
-    pub ty: TrackType,
+pub struct Track<S: TrackStep + Clone> {
     pub number: usize,
     pub variation: usize,
-    pub steps: Vec<Step>,
+    pub steps: Vec<S>,
     // Percentage 25-75
     pub swing: u8,
     pub play_mode: u8,
@@ -355,8 +350,8 @@ pub struct Track {
     attrs: TrackAttrs,
 }
 
-impl Track {
-    fn from_reader(reader: &Reader, number: usize, variation: usize, ty: TrackType, from_file: bool) -> Result<Self> {
+impl<S: TrackStep + Clone> Track<S> {
+    fn from_reader(reader: &Reader, number: usize, variation: usize, from_file: bool) -> Result<Self> {
         let track_len = {
             if from_file {
                 reader.buffer_len()
@@ -369,8 +364,8 @@ impl Track {
 
         let start_pos = reader.pos();
         let steps = (0..64)
-            .map(|step| Step::from_reader(reader, step))
-            .collect::<Result<Vec<Step>>>()?;
+            .map(|step| S::from_reader(reader, step))
+            .collect::<Result<Vec<S>>>()?;
 
         let attrs = TrackAttrs::from_reader(reader, track_len + start_pos)?;
         assert!(attrs.num_steps > 0 && attrs.num_steps < 65);
@@ -378,7 +373,6 @@ impl Track {
         let bytes_advanced = reader.pos() - start_pos;
         assert_eq!(bytes_advanced, track_len);
         Ok(Self {
-            ty,
             number,
             variation,
             steps: steps[0..(attrs.num_steps as usize)].try_into().unwrap(),
@@ -397,15 +391,13 @@ impl Track {
         file.read_to_end(&mut buf).unwrap();
         let reader = Reader::new(buf);
 
-        let track_type = if track_number < 8 { TrackType::Audio } else { TrackType::Midi };
-        Track::from_reader(&reader, track_number, variation_number, track_type, true)
+        Self::from_reader(&reader, track_number, variation_number, true)
     }
 }
 
-impl fmt::Debug for Track {
+impl<S: TrackStep + Clone + fmt::Debug> fmt::Debug for Track<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Track")
-            .field("type", &self.ty)
             .field("number", &self.number)
             .field("variation", &self.variation)
             .field("steps", &self.steps)
@@ -490,6 +482,10 @@ impl Default for TrackSpeed {
     }
 }
 
+pub trait TrackStep {
+    fn from_reader(reader: &Reader, number: usize) -> Result<Self> where Self: Sized;
+}
+
 #[derive(PartialEq, Clone)]
 pub struct Step {
     /// Step number, 0 indexed
@@ -536,7 +532,7 @@ pub struct Step {
     pub rest: Vec<u8>, // TODO
 }
 
-impl Step {
+impl TrackStep for Step {
     fn from_reader(reader: &Reader, number: usize) -> Result<Self> {
         assert_eq!(reader.read(), 0x0A, "Error reading {}nth step", number); // first byte tag (0x0A)
         let len = reader.read_variable_quantity(); // Length of step data
@@ -628,6 +624,170 @@ impl fmt::Debug for Step {
 
         // Alternate, compact format
         write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({})", //  rest: {:?} (len: {})
+               self.number,
+               self.volume,
+               self.note,
+               self.sample,
+               self.sample_start,
+               self.sample_end,
+               self.sample_attack,
+               self.sample_decay,
+               self.pan,
+               self.filter_cutoff,
+               self.filter_resonance,
+               self.micro_move,
+               self.micro_tune,
+               self.repeat_type,
+               self.repeat_grid,
+               self.chance_type,
+               self.chance_action,
+               self.reverb,
+               self.delay,
+               self.overdrive,
+               self.bit_depth,
+               // &self.rest, self.rest.len()
+        )
+    }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct MidiStep {
+    /// Step number, 0 indexed
+    pub number: usize,
+    /// Sample number
+    pub sample: u16,
+    /// Midi note number
+    pub note: u8,
+    /// 0db at 7600; 200 = 1db
+    pub volume: u16,
+    /// -10000 is hard L, 10000 is hard right; 100 = 1%
+    pub pan: i16,
+    /// -10000 is LP100; 10000 is HP100; 100 = 1%
+    pub filter_cutoff: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub filter_resonance: u16,
+    /// 10000 is 100%; 100 = 1%
+    pub overdrive: u16,
+    /// 4-16
+    pub bit_depth: u8,
+    /// -10000 is -11/24; 10000 is +11/24
+    pub micro_move: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub reverb: i16,
+    pub delay: i16,
+    /// 0: start of sample; 32767: end of sample
+    pub sample_start: i16,
+    pub sample_end: i16,
+    /// 10000 is 100%; 100 = 1%
+    pub sample_attack: u16,
+    pub sample_decay: u16,
+    /// Used for display/randomize only; 0xFFFF = All samples
+    pub sample_folder: u16,
+    /// 0 = Off
+    pub repeat_type: u16,
+    pub repeat_grid: u16,
+    /// 0 = Always
+    pub chance_type: u16,
+    /// 0 = Play Step
+    pub chance_action: u16,
+    /// -10000 is -100 cents; 10000 is +100 cents; 100 = 1 cent
+    pub micro_tune: i16,
+
+    pub rest: Vec<u8>, // TODO
+}
+
+impl TrackStep for MidiStep {
+    fn from_reader(reader: &Reader, number: usize) -> Result<Self> {
+        assert_eq!(reader.read(), 0x0A, "Error reading {}nth step", number); // first byte tag (0x0A)
+        let len = reader.read_variable_quantity(); // Length of step data
+
+        let start_pos = reader.pos();
+        // println!("{}nth step, length {} ({:02x})", number, len, len);
+        assert_eq!(reader.read(), 0x0A); // Second tag (0x0A)
+        let num_elements = reader.read_variable_quantity(); // Length of step data
+        assert_eq!(num_elements, 44); // I've never seen a value that's not 44
+
+        let volume = LittleEndian::read_u16(reader.read_bytes(2));
+        let pan = LittleEndian::read_i16(reader.read_bytes(2));
+        let filter_cutoff = LittleEndian::read_i16(reader.read_bytes(2));
+        let filter_resonance = LittleEndian::read_u16(reader.read_bytes(2));
+        let bit_depth = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
+        let overdrive = LittleEndian::read_u16(reader.read_bytes(2));
+        let note = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
+        let delay = LittleEndian::read_i16(reader.read_bytes(2));
+        let reverb = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_start = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample_end = LittleEndian::read_i16(reader.read_bytes(2));
+        let micro_tune = LittleEndian::read_i16(reader.read_bytes(2));
+        let sample_attack = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_decay = LittleEndian::read_u16(reader.read_bytes(2));
+        let sample_folder = LittleEndian::read_u16(reader.read_bytes(2));
+        let repeat_type = LittleEndian::read_u16(reader.read_bytes(2));
+        let repeat_grid = LittleEndian::read_u16(reader.read_bytes(2));
+        let chance_type = LittleEndian::read_u16(reader.read_bytes(2));
+        let chance_action = LittleEndian::read_u16(reader.read_bytes(2));
+        let micro_move = LittleEndian::read_i16(reader.read_bytes(2));
+
+        let bytes_advanced = reader.pos() - start_pos;
+        // Rest appears to be always nothing for empty notes and a fixed set of 6 bytes otherwise
+        let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
+        Ok(Self {
+            number,
+            sample,
+            note,
+            volume,
+            pan,
+            filter_cutoff,
+            filter_resonance,
+            micro_move,
+            micro_tune,
+            sample_start,
+            sample_end,
+            sample_attack,
+            sample_decay,
+            sample_folder,
+            repeat_type,
+            repeat_grid,
+            chance_type,
+            chance_action,
+            reverb,
+            delay,
+            overdrive,
+            bit_depth,
+            rest: rest.to_vec(),
+        })
+    }
+}
+
+impl fmt::Debug for MidiStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // f.debug_struct("MidiStep")
+        //     .field("number", &self.number)
+        //     .field("volume", &self.volume)
+        //     .field("note", &self.note)
+        //     .field("sample", &self.sample)
+        //     .field("sample_start", &self.sample_start)
+        //     .field("sample_end", &self.sample_end)
+        //     .field("sample_attack", &self.sample_attack)
+        //     .field("sample_decay", &self.sample_decay)
+        //     .field("pan", &self.pan)
+        //     .field("filter_cutoff", &self.filter_cutoff)
+        //     .field("filter_resonance", &self.filter_resonance)
+        //     .field("micro_move", &self.micro_move)
+        //     .field("micro_tune", &self.micro_tune)
+        //     .field("repeat_type", &self.repeat_type)
+        //     .field("repeat_grid", &self.repeat_grid)
+        //     .field("chance_type", &self.chance_type)
+        //     .field("chance_action", &self.chance_action)
+        //     .field("reverb", &self.reverb)
+        //     .field("delay", &self.delay)
+        //     .field("overdrive", &self.overdrive)
+        //     .field("bit_depth", &self.bit_depth)
+        //     .finish()
+
+        // Alternate, compact format
+        write!(f, "MidiStep {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({})", //  rest: {:?} (len: {})
                self.number,
                self.volume,
                self.note,
