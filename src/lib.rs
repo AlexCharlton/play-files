@@ -260,24 +260,30 @@ impl Pattern {
         let mut midi_tracks = arr![arr![None; 16]; 8];
         // dbg!(path);
         for track in 0..8 {
-            audio_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, false)?);
+            let t = Track::from_reader(&reader, track, 0, false)?;
+            let v = t.variation;
+            audio_tracks[track][v] = Some(t);
         }
         for track in 0..8 {
-            midi_tracks[track][0] = Some(Track::from_reader(&reader, track, 0, false)?);
+            let t = Track::from_reader(&reader, track, 0, false)?;
+            let v = t.variation;
+            midi_tracks[track][v] = Some(t);
         }
 
         let rest = reader.rest();
 
-        for variation in Self::read_variations(&path.parent().unwrap(), number)?.0 {
+        let (audio_variation, midi_variation) = Self::read_variations(&path.parent().unwrap(), number)?;
+        for variation in audio_variation {
             let track = variation.number;
             let v = variation.variation;
+            if audio_tracks[track][v].is_some() { continue; }
             audio_tracks[track][v] = Some(variation);
-            // TODO FIXME
-            // if track < 8 {
-            // } else {
-            //     variation.number -= 8;
-            //     midi_tracks[track - 8][v] = Some(variation);
-            // }
+        }
+        for variation in midi_variation {
+            let track = variation.number;
+            let v = variation.variation;
+            if midi_tracks[track][v].is_some() { continue; }
+            midi_tracks[track][v] = Some(variation);
         }
 
         Ok(Self {
@@ -289,8 +295,9 @@ impl Pattern {
     }
 
     fn read_variations(path: &Path, pattern_number: u8) -> Result<(Vec<Track<Step>>, Vec<Track<MidiStep>>)> {
-        let mut ret: Vec<Track<Step>> = vec![];
-        for track in 0..8 {
+        let mut audio: Vec<Track<Step>> = vec![];
+        let mut midi: Vec<Track<MidiStep>> = vec![];
+        for track in 0..16 {
             let mut track_files = glob(&format!(
                 "{}/{}-{}-*.track",
                 path.to_str().unwrap(),
@@ -306,12 +313,16 @@ impl Pattern {
                         pattern_number, track, variation
                     ));
                     if track_path.is_file() {
-                        ret.push(Track::read(&track_path, track, variation)?);
+                        if track < 8 {
+                            audio.push(Track::read(&track_path, track, variation)?);
+                        } else {
+                            midi.push(Track::read(&track_path, track - 8, variation)?);
+                        }
                     }
                 }
             }
         }
-        Ok((ret, vec![])) // TODO
+        Ok((audio, midi))
     }
 
     /// Get the first variation of a track
@@ -347,6 +358,7 @@ pub struct Track<S: TrackStep + Clone> {
     pub swing: u8,
     pub play_mode: u8,
     pub track_speed: TrackSpeed,
+    pub is_default: bool,
     attrs: TrackAttrs,
 }
 
@@ -374,11 +386,12 @@ impl<S: TrackStep + Clone> Track<S> {
         assert_eq!(bytes_advanced, track_len);
         Ok(Self {
             number,
-            variation,
+            variation: if from_file { variation } else { attrs.variation as usize },
             steps: steps[0..(attrs.num_steps as usize)].try_into().unwrap(),
             swing: attrs.swing,
             play_mode: attrs.play_mode,
             track_speed: attrs.track_speed,
+            is_default: !from_file,
             attrs,
         })
     }
@@ -416,10 +429,12 @@ pub struct TrackAttrs {
     swing: u8,
     play_mode: u8,
     track_speed: TrackSpeed,
-    // TODO, unknown values:
+    // This is the default variation when the track was saved
+    variation: u8,
+    // This is a map of what variations existed when this track was saved. Not sure why it exists.
+    variations: Vec<bool>,
+    // TODO, unknown value:
     ux18: u8,
-    ux30: u8,
-    ux4a: Vec<u8>,
 }
 
 impl TrackAttrs {
@@ -452,15 +467,15 @@ impl TrackAttrs {
                         reader.read(); // discard
                     }
                 }
-                0x18 => attrs.ux18 = reader.read(),
-                0x30 => attrs.ux30 = reader.read(),
+                0x30 => attrs.variation = reader.read(),
                 0x4a => {
                     let len = reader.read();
-                    attrs.ux4a = reader.read_bytes(len as usize).to_vec();
+                    attrs.variations = reader.read_bytes(len as usize).iter().map(|&x| x != 0).collect();
                 },
+                0x18 => attrs.ux18 = reader.read(),
                 x => {
-                    reader.read(); // Discard
-                    println!("Warning: encountered unknown track tag {:02X}", x);
+                    println!("Warning: encountered unknown track tag {:02X} with value {}",
+                             x, reader.read());
                 },
             }
         }

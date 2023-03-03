@@ -147,4 +147,12 @@ fn test_variations() {
     assert!(BELIEVE_IT.patterns[0].audio_tracks[2][0].is_some());
     assert!(BELIEVE_IT.patterns[0].audio_tracks[2][1].is_none());
     assert!(BELIEVE_IT.patterns[0].audio_tracks[2][2].is_some());
+
+    assert!(TEST_1.patterns[0].audio_tracks[0][0].is_some());
+    assert!(TEST_1.patterns[0].audio_tracks[0][1].is_none());
+    assert!(TEST_1.patterns[0].audio_tracks[0][2].is_some());
+    assert!(TEST_1.patterns[0].audio_tracks[0][2].as_ref().map(|t| t.is_default).unwrap_or(false));
+    assert!(TEST_1.patterns[0].midi_tracks[0][0].is_some());
+    assert!(TEST_1.patterns[0].midi_tracks[0][1].is_some());
+
 }
