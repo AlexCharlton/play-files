@@ -51,6 +51,27 @@ v1.2.0:
     - Step 2: Overdrive 90%; 8 bits
 - Track 7: Empty, soloed; Track Speed: Pause (min value); Track swing: 75% (max value)
 - Track 8: Empty, muted; Track Speed: 1/16 (second to min value); Track swing: 75% (max value)
+- Midi Track 1
+  - Step 1: Jack Channel 1, Program 0, Velocity 100; Note length 1.0 C4
+  - Step 2:
+    - G3
+    - Pitchbend -100
+    - Chord: Power 4th (2nd)
+    - CC 12: 12
+    - CC 13: 13
+    - CC 17: 17
+    - CC 19: 19
+    - CC 22: 22
+    - CC 71: 71
+    - CC 74: 74
+    - CC 75: 75
+    - Chance: 90% Action Rnd Note (2nd)
+    - Repeat Type Straight (2nd); Grid: 2 hits | 1 Step (1st)
+    - Micromove +11
+- Midi Track 2
+  - Step 1: Jack Channel 2, Program 2, Velocity 0; note length 0.25; Chord: Minor 13th (last val)
+- Midi Track 2
+  - Step 1: USB Channel 1, Program 127, velocity 127 Note length 64.0
 
 ## Observations
 Believe It project structure:
@@ -310,6 +331,21 @@ Skipped a few parameters, since this is getting repetitive. We do this 22 times
 
 Final 6 bytes: Unknown
 Always `16, 1, 24, 255, 255, 127` 
+
+The last three bytes seem to be a mask indicating which attributes are actually set. Seems to be particularly relevant for midi notes.
+
+Bytes for the first two notes of the Test 1 midi track:
+```
+11000011 10001100 1110010
+11111111 11101111 1111111
+```
+
+The second note only has one value not set (the unused "sample end" value). The first note's values don't seem to line up with the read order, however.
+
+What values are set on this note? (In terms of values that appear on the Play):
+Note, Channel, program, Chord, chance, action, volume, panning, maybe Randomize/type, maybe micromove) 11 values lines up with 11 bits set.
+
+Bits also don't look like they line up with how they are arranged on the machine.
 
 #### track footers
 Differ in length depending on contents. Eg. setting one of track length or play mode extended the footer 2 bytes
