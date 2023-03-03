@@ -70,8 +70,12 @@ v1.2.0:
     - Micromove +11
 - Midi Track 2
   - Step 1: Jack Channel 2, Program 2, Velocity 0; note length 0.25; Chord: Minor 13th (last val)
-- Midi Track 2
+- Midi Track 3
   - Step 1: USB Channel 1, Program 127, velocity 127 Note length 64.0
+- Midi Track 4
+  - Blank notes with one value set
+- Midi Track 5
+  - An actually blank note (no program set)
 
 ## Observations
 Believe It project structure:

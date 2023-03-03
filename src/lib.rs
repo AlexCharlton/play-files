@@ -581,8 +581,9 @@ impl TrackStep for Step {
         let micro_move = LittleEndian::read_i16(reader.read_bytes(2));
 
         let bytes_advanced = reader.pos() - start_pos;
-        // Rest appears to be always nothing for empty notes and a fixed set of 6 bytes otherwise
+        // Rest appears to be two empty bytes for empty notes and 8 bytes otherwise
         let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
+
         Ok(Self {
             number,
             sample,
@@ -671,7 +672,7 @@ pub struct MidiStep {
     pub number: usize,
     /// Sample number
     pub channel: MidiChannel,
-    pub program: u8,
+    pub program: Option<u8>,
     /// Midi note number
     pub note: u8,
     pub velocity: u8,
@@ -682,17 +683,17 @@ pub struct MidiStep {
     /// -10000 is -11/24; 10000 is +11/24
     pub micro_move: i16,
     /// -10000 is -100 cents; 10000 is +100 cents; 100 = 1 cent
-    pub pitch_bend: i16,
+    pub pitch_bend: Option<i16>,
 
     /// Midi CC values
-    pub cc12: u16,
-    pub cc13: u16,
-    pub cc17: u16,
-    pub cc19: u16,
-    pub cc22: u16,
-    pub cc71: u16,
-    pub cc74: u16,
-    pub cc75: u16,
+    pub cc12: Option<u8>,
+    pub cc13: Option<u8>,
+    pub cc17: Option<u8>,
+    pub cc19: Option<u8>,
+    pub cc22: Option<u8>,
+    pub cc71: Option<u8>,
+    pub cc74: Option<u8>,
+    pub cc75: Option<u8>,
 
     /// Used for display/randomize only; 0xFFFF = All samples
     /// 0 = Off
@@ -719,29 +720,67 @@ impl TrackStep for MidiStep {
 
         let velocity = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
         let note_length = LittleEndian::read_u16(reader.read_bytes(2));
-        let cc74 = LittleEndian::read_i16(reader.read_bytes(2)) as u16;
-        let cc71 = LittleEndian::read_u16(reader.read_bytes(2)) as u16;
-        let cc13 = LittleEndian::read_u16(reader.read_bytes(2)) as u16;
-        let cc12 = LittleEndian::read_u16(reader.read_bytes(2)) as u16;
+        let mut cc74 = Some(LittleEndian::read_i16(reader.read_bytes(2)) as u8);
+        let mut cc71 = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
+        let mut cc13 = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
+        let mut cc12 = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
         let note = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
-        let cc19 = LittleEndian::read_i16(reader.read_bytes(2)) as u16;
-        let cc17 = LittleEndian::read_i16(reader.read_bytes(2)) as u16;
+        let mut cc19 = Some(LittleEndian::read_i16(reader.read_bytes(2)) as u8);
+        let mut cc17 = Some(LittleEndian::read_i16(reader.read_bytes(2)) as u8);
         let channel = MidiChannel::from(LittleEndian::read_u16(reader.read_bytes(2)));
         let chord = LittleEndian::read_i16(reader.read_bytes(2));
         let _sample_end = LittleEndian::read_i16(reader.read_bytes(2)); // unused
-        let pitch_bend = LittleEndian::read_i16(reader.read_bytes(2));
-        let cc22 = LittleEndian::read_u16(reader.read_bytes(2)) as u16;
-        let cc75 = LittleEndian::read_u16(reader.read_bytes(2)) as u16;
-        let program = LittleEndian::read_u16(reader.read_bytes(2)) as u8;
-        let repeat_type = LittleEndian::read_u16(reader.read_bytes(2));
-        let repeat_grid = LittleEndian::read_u16(reader.read_bytes(2));
+        let mut pitch_bend = Some(LittleEndian::read_i16(reader.read_bytes(2)));
+        let mut cc22 = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
+        let mut cc75 = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
+        let mut program = Some(LittleEndian::read_u16(reader.read_bytes(2)) as u8);
+        let mut repeat_type = LittleEndian::read_u16(reader.read_bytes(2));
+        let mut repeat_grid = LittleEndian::read_u16(reader.read_bytes(2));
         let chance_type = LittleEndian::read_u16(reader.read_bytes(2));
         let chance_action = LittleEndian::read_u16(reader.read_bytes(2));
         let micro_move = LittleEndian::read_i16(reader.read_bytes(2));
 
         let bytes_advanced = reader.pos() - start_pos;
-        // Rest appears to be always nothing for empty notes and a fixed set of 6 bytes otherwise
-        let rest = reader.read_bytes(len - bytes_advanced); // Unknown data
+        // First five bytes are unknown. Last 3 are a bitmask when the note exists
+        let rest = reader.read_bytes(len - bytes_advanced);
+
+        if rest.len() > 2 {
+            let m1 = rest[5];
+            let m2 = rest[6];
+            let m3 = rest[7];
+
+            // This is madness :S
+            // And also not really ideal. We probably shouldn't default to 0?
+            if ((m1 >> 5) & 1) == 0 { cc12 = None }
+            if ((m1 >> 4) & 1) == 0 { cc13 = None }
+            if ((m1 >> 3) & 1) == 0 { cc71 = None }
+            if ((m1 >> 2) & 1) == 0 { cc74 = None }
+
+            if ((m2 >> 6) & 1) == 0 { cc22 = None }
+            if ((m2 >> 5) & 1) == 0 { pitch_bend = None }
+            if ((m2 >> 1) & 1) == 0 { cc17 = None }
+            if ((m2 >> 0) & 1) == 0 { cc19 = None }
+
+            // This is "Off", so I don't think None is necessary
+            if ((m3 >> 3) & 1) == 0 { repeat_grid = 0 }
+            if ((m3 >> 2) & 1) == 0 { repeat_type = 0 }
+            if ((m3 >> 1) & 1) == 0 { program = None }
+            if ((m3 >> 0) & 1) == 0 { cc75 = None }
+
+            // There are 10 bytes that can't be unset, and thus can't be inferred
+        } else {
+            cc12 = None;
+            cc13 = None;
+            cc17 = None;
+            cc19 = None;
+            cc22 = None;
+            cc71 = None;
+            cc74 = None;
+            cc75 = None;
+            program = None;
+            pitch_bend = None;
+        }
+
         Ok(Self {
             number,
             channel,
@@ -795,7 +834,7 @@ impl fmt::Debug for MidiStep {
         //     .finish()
 
         // Alternate, compact format
-        write!(f, "MidiStep {}: note({}) velocity({}) channel({:?}) program({}) note_length({}) micromove({}) pitch_bend({}) CC(12:{}|13:{}|17:{}|19:{}|22:{}|71:{}|74:{}|75:{})  repeat/type-grid({}-{}) chance/type-action({}-{}) rest: {:?} (len: {}) {:b} {:b} {:b}", // 
+        write!(f, "MidiStep {}: note({}) velocity({}) channel({:?}) program({:?}) note_length({}) micromove({}) pitch_bend({:?}) CC(12:{:?}|13:{:?}|17:{:?}|19:{:?}|22:{:?}|71:{:?}|74:{:?}|75:{:?})  repeat/type-grid({}-{}) chance/type-action({}-{})", // rest: {:?} (len: {}) \n{:b} {:b} {:b}",
                self.number,
                self.note,
                self.velocity,
@@ -816,10 +855,10 @@ impl fmt::Debug for MidiStep {
                self.repeat_grid,
                self.chance_type,
                self.chance_action,
-               &self.rest, self.rest.len(),
-               self.rest[5.min(self.rest.len()-1)],
-               self.rest[6.min(self.rest.len()-1)],
-               self.rest[7.min(self.rest.len()-1)],
+               // &self.rest, self.rest.len(),
+               // self.rest[5.min(self.rest.len()-1)],
+               // self.rest[6.min(self.rest.len()-1)],
+               // self.rest[7.min(self.rest.len()-1)],
         )
     }
 }
