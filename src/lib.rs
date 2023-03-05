@@ -200,7 +200,6 @@ impl fmt::Debug for Samples {
     }
 }
 
-
 type AudioTrackVariations = [Option<Track<Step>>; 16];
 type MidiTrackVariations = [Option<Track<MidiStep>>; 16];
 
@@ -272,17 +271,22 @@ impl Pattern {
 
         let rest = reader.rest();
 
-        let (audio_variation, midi_variation) = Self::read_variations(&path.parent().unwrap(), number)?;
+        let (audio_variation, midi_variation) =
+            Self::read_variations(&path.parent().unwrap(), number)?;
         for variation in audio_variation {
             let track = variation.number;
             let v = variation.variation;
-            if audio_tracks[track][v].is_some() { continue; }
+            if audio_tracks[track][v].is_some() {
+                continue;
+            }
             audio_tracks[track][v] = Some(variation);
         }
         for variation in midi_variation {
             let track = variation.number;
             let v = variation.variation;
-            if midi_tracks[track][v].is_some() { continue; }
+            if midi_tracks[track][v].is_some() {
+                continue;
+            }
             midi_tracks[track][v] = Some(variation);
         }
 
@@ -294,7 +298,10 @@ impl Pattern {
         })
     }
 
-    fn read_variations(path: &Path, pattern_number: u8) -> Result<(Vec<Track<Step>>, Vec<Track<MidiStep>>)> {
+    fn read_variations(
+        path: &Path,
+        pattern_number: u8,
+    ) -> Result<(Vec<Track<Step>>, Vec<Track<MidiStep>>)> {
         let mut audio: Vec<Track<Step>> = vec![];
         let mut midi: Vec<Track<MidiStep>> = vec![];
         for track in 0..16 {
@@ -303,15 +310,13 @@ impl Pattern {
                 path.to_str().unwrap(),
                 pattern_number,
                 track
-            )).map_err(|_| ParseError(format!("Could not read track dir")))?;
+            ))
+            .map_err(|_| ParseError(format!("Could not read track dir")))?;
 
             if track_files.next().is_some() {
-
                 for variation in 0..16 {
-                    let track_path = path.join(&format!(
-                        "{}-{}-{}.track",
-                        pattern_number, track, variation
-                    ));
+                    let track_path =
+                        path.join(&format!("{}-{}-{}.track", pattern_number, track, variation));
                     if track_path.is_file() {
                         if track < 8 {
                             audio.push(Track::read(&track_path, track, variation)?);
@@ -328,6 +333,11 @@ impl Pattern {
     /// Get the first variation of a track
     pub fn audio_track(&self, n: usize) -> &Track<Step> {
         self.audio_tracks[n][0].as_ref().unwrap()
+    }
+
+    /// Get the first variation of a track
+    pub fn midi_track(&self, n: usize) -> &Track<MidiStep> {
+        self.midi_tracks[n][0].as_ref().unwrap()
     }
 }
 
@@ -363,7 +373,12 @@ pub struct Track<S: TrackStep + Clone> {
 }
 
 impl<S: TrackStep + Clone> Track<S> {
-    fn from_reader(reader: &Reader, number: usize, variation: usize, from_file: bool) -> Result<Self> {
+    fn from_reader(
+        reader: &Reader,
+        number: usize,
+        variation: usize,
+        from_file: bool,
+    ) -> Result<Self> {
         let track_len = {
             if from_file {
                 reader.buffer_len()
@@ -386,7 +401,11 @@ impl<S: TrackStep + Clone> Track<S> {
         assert_eq!(bytes_advanced, track_len);
         Ok(Self {
             number,
-            variation: if from_file { variation } else { attrs.variation as usize },
+            variation: if from_file {
+                variation
+            } else {
+                attrs.variation as usize
+            },
             steps: steps[0..(attrs.num_steps as usize)].try_into().unwrap(),
             swing: attrs.swing,
             play_mode: attrs.play_mode,
@@ -451,17 +470,17 @@ impl TrackAttrs {
                     if let TrackSpeed::Fraction(_, d) = attrs.track_speed {
                         attrs.track_speed = match reader.read() {
                             0 => TrackSpeed::Paused,
-                            n => TrackSpeed::Fraction(n, d)
+                            n => TrackSpeed::Fraction(n, d),
                         };
                     } else {
                         attrs.track_speed = TrackSpeed::Fraction(reader.read(), 1)
                     }
-                },
+                }
                 0x28 => {
                     if let TrackSpeed::Fraction(n, _) = attrs.track_speed {
                         attrs.track_speed = match reader.read() {
                             0 => TrackSpeed::Paused,
-                            d => TrackSpeed::Fraction(n, d)
+                            d => TrackSpeed::Fraction(n, d),
                         };
                     } else {
                         reader.read(); // discard
@@ -470,13 +489,20 @@ impl TrackAttrs {
                 0x30 => attrs.variation = reader.read(),
                 0x4a => {
                     let len = reader.read();
-                    attrs.variations = reader.read_bytes(len as usize).iter().map(|&x| x != 0).collect();
-                },
+                    attrs.variations = reader
+                        .read_bytes(len as usize)
+                        .iter()
+                        .map(|&x| x != 0)
+                        .collect();
+                }
                 0x18 => attrs.ux18 = reader.read(),
                 x => {
-                    println!("Warning: encountered unknown track tag {:02X} with value {}",
-                             x, reader.read());
-                },
+                    println!(
+                        "Warning: encountered unknown track tag {:02X} with value {}",
+                        x,
+                        reader.read()
+                    );
+                }
             }
         }
 
@@ -498,7 +524,9 @@ impl Default for TrackSpeed {
 }
 
 pub trait TrackStep {
-    fn from_reader(reader: &Reader, number: usize) -> Result<Self> where Self: Sized;
+    fn from_reader(reader: &Reader, number: usize) -> Result<Self>
+    where
+        Self: Sized;
 }
 
 #[derive(PartialEq, Clone)]
@@ -751,21 +779,45 @@ impl TrackStep for MidiStep {
 
             // This is madness :S
             // And also not really ideal. We probably shouldn't default to 0?
-            if ((m1 >> 5) & 1) == 0 { cc12 = None }
-            if ((m1 >> 4) & 1) == 0 { cc13 = None }
-            if ((m1 >> 3) & 1) == 0 { cc71 = None }
-            if ((m1 >> 2) & 1) == 0 { cc74 = None }
+            if ((m1 >> 5) & 1) == 0 {
+                cc12 = None
+            }
+            if ((m1 >> 4) & 1) == 0 {
+                cc13 = None
+            }
+            if ((m1 >> 3) & 1) == 0 {
+                cc71 = None
+            }
+            if ((m1 >> 2) & 1) == 0 {
+                cc74 = None
+            }
 
-            if ((m2 >> 6) & 1) == 0 { cc22 = None }
-            if ((m2 >> 5) & 1) == 0 { pitch_bend = None }
-            if ((m2 >> 1) & 1) == 0 { cc17 = None }
-            if ((m2 >> 0) & 1) == 0 { cc19 = None }
+            if ((m2 >> 6) & 1) == 0 {
+                cc22 = None
+            }
+            if ((m2 >> 5) & 1) == 0 {
+                pitch_bend = None
+            }
+            if ((m2 >> 1) & 1) == 0 {
+                cc17 = None
+            }
+            if ((m2 >> 0) & 1) == 0 {
+                cc19 = None
+            }
 
             // This is "Off", so I don't think None is necessary
-            if ((m3 >> 3) & 1) == 0 { repeat_grid = 0 }
-            if ((m3 >> 2) & 1) == 0 { repeat_type = 0 }
-            if ((m3 >> 1) & 1) == 0 { program = None }
-            if ((m3 >> 0) & 1) == 0 { cc75 = None }
+            if ((m3 >> 3) & 1) == 0 {
+                repeat_grid = 0
+            }
+            if ((m3 >> 2) & 1) == 0 {
+                repeat_type = 0
+            }
+            if ((m3 >> 1) & 1) == 0 {
+                program = None
+            }
+            if ((m3 >> 0) & 1) == 0 {
+                cc75 = None
+            }
 
             // There are 10 bytes that can't be unset, and thus can't be inferred
         } else {
@@ -866,7 +918,7 @@ impl fmt::Debug for MidiStep {
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum MidiChannel {
     Jack(u8),
-    Usb(u8)
+    Usb(u8),
 }
 
 impl From<u16> for MidiChannel {

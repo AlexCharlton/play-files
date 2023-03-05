@@ -81,4 +81,3 @@ impl Reader {
         self.buffer[p..].to_vec()
     }
 }
-
