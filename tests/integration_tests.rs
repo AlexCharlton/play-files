@@ -121,7 +121,31 @@ fn test_steps_mapping() {
 }
 
 #[test]
-fn test_track_attributes() {
+fn test_midi_step_mapping() {
+    let pat = &TEST_1.patterns[0];
+    assert_eq!(pat.midi_track(0).steps[0].note, 60);
+    assert_eq!(pat.midi_track(0).steps[1].note, 55);
+    assert_eq!(pat.midi_track(0).steps[0].velocity, 100);
+    assert_eq!(pat.midi_track(1).steps[0].velocity, 0);
+    assert_eq!(pat.midi_track(2).steps[0].velocity, 127);
+    assert_eq!(pat.midi_track(0).steps[0].channel, MidiChannel::Jack(1));
+    assert_eq!(pat.midi_track(1).steps[0].channel, MidiChannel::Jack(2));
+    assert_eq!(pat.midi_track(2).steps[0].channel, MidiChannel::Usb(1));
+    assert_eq!(pat.midi_track(0).steps[0].program, Some(0));
+    assert_eq!(pat.midi_track(1).steps[0].program, Some(2));
+    assert_eq!(pat.midi_track(2).steps[0].program, Some(127));
+    assert_eq!(pat.midi_track(4).steps[0].program, None);
+    assert_eq!(pat.midi_track(0).steps[0].note_length, 60);
+    assert_eq!(pat.midi_track(1).steps[0].note_length, 15);
+    assert_eq!(pat.midi_track(2).steps[0].note_length, 3840);
+    assert_eq!(pat.midi_track(0).steps[0].pitch_bend, None);
+    assert_eq!(pat.midi_track(0).steps[1].pitch_bend, Some(-100));
+    assert_eq!(pat.midi_track(0).steps[0].cc12, None);
+    assert_eq!(pat.midi_track(0).steps[1].cc12, Some(12));
+}
+
+#[test]
+fn test_step_attributes() {
     assert_eq!(TEST_1.patterns[0].audio_track(0).steps.len(), 16);
     assert_eq!(TEST_1.patterns[0].audio_track(4).steps.len(), 12);
 
@@ -133,10 +157,22 @@ fn test_track_attributes() {
     assert_eq!(TEST_1.patterns[0].audio_track(5).swing, 25);
     assert_eq!(TEST_1.patterns[0].audio_track(6).swing, 75);
 
-    assert_eq!(TEST_1.patterns[0].audio_track(0).track_speed, TrackSpeed::Fraction(1, 1));
-    assert_eq!(TEST_1.patterns[0].audio_track(5).track_speed, TrackSpeed::Fraction(8, 1));
-    assert_eq!(TEST_1.patterns[0].audio_track(6).track_speed, TrackSpeed::Paused);
-    assert_eq!(TEST_1.patterns[0].audio_track(7).track_speed, TrackSpeed::Fraction(1, 16));
+    assert_eq!(
+        TEST_1.patterns[0].audio_track(0).track_speed,
+        TrackSpeed::Fraction(1, 1)
+    );
+    assert_eq!(
+        TEST_1.patterns[0].audio_track(5).track_speed,
+        TrackSpeed::Fraction(8, 1)
+    );
+    assert_eq!(
+        TEST_1.patterns[0].audio_track(6).track_speed,
+        TrackSpeed::Paused
+    );
+    assert_eq!(
+        TEST_1.patterns[0].audio_track(7).track_speed,
+        TrackSpeed::Fraction(1, 16)
+    );
 }
 
 #[test]
@@ -151,8 +187,10 @@ fn test_variations() {
     assert!(TEST_1.patterns[0].audio_tracks[0][0].is_some());
     assert!(TEST_1.patterns[0].audio_tracks[0][1].is_none());
     assert!(TEST_1.patterns[0].audio_tracks[0][2].is_some());
-    assert!(TEST_1.patterns[0].audio_tracks[0][2].as_ref().map(|t| t.is_default).unwrap_or(false));
+    assert!(TEST_1.patterns[0].audio_tracks[0][2]
+        .as_ref()
+        .map(|t| t.is_default)
+        .unwrap_or(false));
     assert!(TEST_1.patterns[0].midi_tracks[0][0].is_some());
     assert!(TEST_1.patterns[0].midi_tracks[0][1].is_some());
-
 }
