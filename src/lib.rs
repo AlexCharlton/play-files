@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
@@ -84,18 +83,12 @@ impl Settings {
         let mut attrs = Self::default();
         Self::attrs_from_reader(&reader, &mut attrs)?;
 
-        attrs.jack_cc_mapping = (0..16)
-            .map(|_| CCMapping::from_reader(&reader))
-            .collect::<Result<Vec<CCMapping>>>()?;
-        attrs.usb_cc_mapping = (0..16)
-            .map(|_| CCMapping::from_reader(&reader))
-            .collect::<Result<Vec<CCMapping>>>()?;
-
         Ok(attrs)
     }
 
     fn attrs_from_reader(reader: &Reader, settings: &mut Self) -> Result<()> {
         let mut tag = reader.read();
+        let mut abort = false;
         while tag != 0xc2 {
             // Elements in the CCMapping begin with 0xC2
             match tag {
@@ -113,11 +106,26 @@ impl Settings {
                 0x90 => settings.x90 = reader.read_bytes(11).to_vec(),
                 0xA8 => settings.xa8 = reader.read_bytes(2).to_vec(),
                 0xB0 => settings.xb0 = reader.read_bytes(2).to_vec(),
-                t => panic!("Unknown tag: {}", t),
+                t => {
+                    println!(
+                        "Error: Unknown tag ({}). Aborting parsing project settings.",
+                        t
+                    );
+                    abort = true;
+                    break;
+                }
             }
             tag = reader.read();
         }
-        reader.step_back(); // Replace the last 0xC2
+        if !abort {
+            reader.step_back(); // Replace the last 0xC2
+            settings.jack_cc_mapping = (0..16)
+                .map(|_| CCMapping::from_reader(&reader))
+                .collect::<Result<Vec<CCMapping>>>()?;
+            settings.usb_cc_mapping = (0..16)
+                .map(|_| CCMapping::from_reader(&reader))
+                .collect::<Result<Vec<CCMapping>>>()?;
+        }
         Ok(())
     }
 }
@@ -272,7 +280,7 @@ impl Pattern {
         let rest = reader.rest();
 
         let (audio_variation, midi_variation) =
-            Self::read_variations(&path.parent().unwrap(), number)?;
+            Self::read_variations(path.parent().unwrap(), number)?;
         for variation in audio_variation {
             let track = variation.number;
             let v = variation.variation;
@@ -292,8 +300,8 @@ impl Pattern {
 
         Ok(Self {
             number,
-            audio_tracks: audio_tracks.try_into().unwrap(),
-            midi_tracks: midi_tracks.try_into().unwrap(),
+            audio_tracks,
+            midi_tracks,
             rest,
         })
     }
@@ -642,55 +650,55 @@ impl TrackStep for Step {
 
 impl fmt::Debug for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // f.debug_struct("Step")
-        //     .field("number", &self.number)
-        //     .field("volume", &self.volume)
-        //     .field("note", &self.note)
-        //     .field("sample", &self.sample)
-        //     .field("sample_start", &self.sample_start)
-        //     .field("sample_end", &self.sample_end)
-        //     .field("sample_attack", &self.sample_attack)
-        //     .field("sample_decay", &self.sample_decay)
-        //     .field("pan", &self.pan)
-        //     .field("filter_cutoff", &self.filter_cutoff)
-        //     .field("filter_resonance", &self.filter_resonance)
-        //     .field("micro_move", &self.micro_move)
-        //     .field("micro_tune", &self.micro_tune)
-        //     .field("repeat_type", &self.repeat_type)
-        //     .field("repeat_grid", &self.repeat_grid)
-        //     .field("chance_type", &self.chance_type)
-        //     .field("chance_action", &self.chance_action)
-        //     .field("reverb", &self.reverb)
-        //     .field("delay", &self.delay)
-        //     .field("overdrive", &self.overdrive)
-        //     .field("bit_depth", &self.bit_depth)
-        //     .finish()
+        f.debug_struct("Step")
+            .field("number", &self.number)
+            .field("volume", &self.volume)
+            .field("note", &self.note)
+            .field("sample", &self.sample)
+            .field("sample_start", &self.sample_start)
+            .field("sample_end", &self.sample_end)
+            .field("sample_attack", &self.sample_attack)
+            .field("sample_decay", &self.sample_decay)
+            .field("pan", &self.pan)
+            .field("filter_cutoff", &self.filter_cutoff)
+            .field("filter_resonance", &self.filter_resonance)
+            .field("micro_move", &self.micro_move)
+            .field("micro_tune", &self.micro_tune)
+            .field("repeat_type", &self.repeat_type)
+            .field("repeat_grid", &self.repeat_grid)
+            .field("chance_type", &self.chance_type)
+            .field("chance_action", &self.chance_action)
+            .field("reverb", &self.reverb)
+            .field("delay", &self.delay)
+            .field("overdrive", &self.overdrive)
+            .field("bit_depth", &self.bit_depth)
+            .finish()
 
         // Alternate, compact format
-        write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({})", //  rest: {:?} (len: {})
-               self.number,
-               self.volume,
-               self.note,
-               self.sample,
-               self.sample_start,
-               self.sample_end,
-               self.sample_attack,
-               self.sample_decay,
-               self.pan,
-               self.filter_cutoff,
-               self.filter_resonance,
-               self.micro_move,
-               self.micro_tune,
-               self.repeat_type,
-               self.repeat_grid,
-               self.chance_type,
-               self.chance_action,
-               self.reverb,
-               self.delay,
-               self.overdrive,
-               self.bit_depth,
-               // &self.rest, self.rest.len()
-        )
+        // write!(f, "Step {}: volume({}) note({}) sample({}) start/end({}-{}) attack/decay({}-{}) pan({}) filter_cutoff({}) resonance({}) micromove({}) microtune({}) repeat/type-grid({}-{}) chance/type-action({}-{}) reverb/delay({}-{}) overdrive({}) bit-depth({})", //  rest: {:?} (len: {})
+        //        self.number,
+        //        self.volume,
+        //        self.note,
+        //        self.sample,
+        //        self.sample_start,
+        //        self.sample_end,
+        //        self.sample_attack,
+        //        self.sample_decay,
+        //        self.pan,
+        //        self.filter_cutoff,
+        //        self.filter_resonance,
+        //        self.micro_move,
+        //        self.micro_tune,
+        //        self.repeat_type,
+        //        self.repeat_grid,
+        //        self.chance_type,
+        //        self.chance_action,
+        //        self.reverb,
+        //        self.delay,
+        //        self.overdrive,
+        //        self.bit_depth,
+        //        // &self.rest, self.rest.len()
+        // )
     }
 }
 
@@ -801,7 +809,7 @@ impl TrackStep for MidiStep {
             if ((m2 >> 1) & 1) == 0 {
                 cc17 = None
             }
-            if ((m2 >> 0) & 1) == 0 {
+            if (m2 & 1) == 0 {
                 cc19 = None
             }
 
@@ -815,7 +823,7 @@ impl TrackStep for MidiStep {
             if ((m3 >> 1) & 1) == 0 {
                 program = None
             }
-            if ((m3 >> 0) & 1) == 0 {
+            if (m3 & 1) == 0 {
                 cc75 = None
             }
 
@@ -862,56 +870,56 @@ impl TrackStep for MidiStep {
 
 impl fmt::Debug for MidiStep {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // f.debug_struct("MidiStep")
-        //     .field("number", &self.number)
-        //     .field("note", &self.note)
-        //     .field("velocity", &self.velocity)
-        //     .field("channel", &self.channel)
-        //     .field("program", &self.program)
-        //     .field("note_length", &self.note_length)
-        //     .field("micro_move", &self.micro_move)
-        //     .field("pitch_bend", &self.bitch_bend)
-        //     .field("cc12", &self.cc12)
-        //     .field("cc13", &self.cc13)
-        //     .field("cc17", &self.cc17)
-        //     .field("cc19", &self.cc19)
-        //     .field("cc22", &self.cc22)
-        //     .field("cc71", &self.cc71)
-        //     .field("cc74", &self.cc74)
-        //     .field("cc75", &self.cc75)
-        //     .field("repeat_type", &self.repeat_type)
-        //     .field("repeat_grid", &self.repeat_grid)
-        //     .field("chance_type", &self.chance_type)
-        //     .field("chance_action", &self.chance_action)
-        //     .finish()
+        f.debug_struct("MidiStep")
+            .field("number", &self.number)
+            .field("note", &self.note)
+            .field("velocity", &self.velocity)
+            .field("channel", &self.channel)
+            .field("program", &self.program)
+            .field("note_length", &self.note_length)
+            .field("micro_move", &self.micro_move)
+            .field("pitch_bend", &self.pitch_bend)
+            .field("cc12", &self.cc12)
+            .field("cc13", &self.cc13)
+            .field("cc17", &self.cc17)
+            .field("cc19", &self.cc19)
+            .field("cc22", &self.cc22)
+            .field("cc71", &self.cc71)
+            .field("cc74", &self.cc74)
+            .field("cc75", &self.cc75)
+            .field("repeat_type", &self.repeat_type)
+            .field("repeat_grid", &self.repeat_grid)
+            .field("chance_type", &self.chance_type)
+            .field("chance_action", &self.chance_action)
+            .finish()
 
         // Alternate, compact format
-        write!(f, "MidiStep {}: note({}) velocity({}) channel({:?}) program({:?}) note_length({}) micromove({}) pitch_bend({:?}) CC(12:{:?}|13:{:?}|17:{:?}|19:{:?}|22:{:?}|71:{:?}|74:{:?}|75:{:?})  repeat/type-grid({}-{}) chance/type-action({}-{})", // rest: {:?} (len: {}) \n{:b} {:b} {:b}",
-               self.number,
-               self.note,
-               self.velocity,
-               self.channel,
-               self.program,
-               self.note_length,
-               self.micro_move,
-               self.pitch_bend,
-               self.cc12,
-               self.cc13,
-               self.cc17,
-               self.cc19,
-               self.cc22,
-               self.cc71,
-               self.cc74,
-               self.cc75,
-               self.repeat_type,
-               self.repeat_grid,
-               self.chance_type,
-               self.chance_action,
-               // &self.rest, self.rest.len(),
-               // self.rest[5.min(self.rest.len()-1)],
-               // self.rest[6.min(self.rest.len()-1)],
-               // self.rest[7.min(self.rest.len()-1)],
-        )
+        // write!(f, "MidiStep {}: note({}) velocity({}) channel({:?}) program({:?}) note_length({}) micromove({}) pitch_bend({:?}) CC(12:{:?}|13:{:?}|17:{:?}|19:{:?}|22:{:?}|71:{:?}|74:{:?}|75:{:?})  repeat/type-grid({}-{}) chance/type-action({}-{})", // rest: {:?} (len: {}) \n{:b} {:b} {:b}",
+        //        self.number,
+        //        self.note,
+        //        self.velocity,
+        //        self.channel,
+        //        self.program,
+        //        self.note_length,
+        //        self.micro_move,
+        //        self.pitch_bend,
+        //        self.cc12,
+        //        self.cc13,
+        //        self.cc17,
+        //        self.cc19,
+        //        self.cc22,
+        //        self.cc71,
+        //        self.cc74,
+        //        self.cc75,
+        //        self.repeat_type,
+        //        self.repeat_grid,
+        //        self.chance_type,
+        //        self.chance_action,
+        //        // &self.rest, self.rest.len(),
+        //        // self.rest[5.min(self.rest.len()-1)],
+        //        // self.rest[6.min(self.rest.len()-1)],
+        //        // self.rest[7.min(self.rest.len()-1)],
+        // )
     }
 }
 

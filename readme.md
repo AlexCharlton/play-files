@@ -4,10 +4,8 @@ A library for parsing Polyend Play projects into Rust structs.
 
 ## TODO
 Substantial:
-- Midi Step parsing
 - Parse `samplesMetadata`
 - Lots of unknown `settings`
-  - Figure out set of tags (or otherwise don't panic)
 - Make proper enums for the enum values (e.g. Chance)
 - Write files
 
