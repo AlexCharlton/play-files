@@ -1,7 +1,11 @@
 [package]
 name = "play-files"
+description = "A library for parsing Polyend Play projects into Rust structs"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/AlexCharlton/play-files"
+license = "MIT"
+keywords = ["music"]
 
 [dependencies]
 arr_macro = "0.2.1"
