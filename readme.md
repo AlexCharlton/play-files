@@ -1,6 +1,18 @@
 # play-files
 A library for parsing Polyend Play projects into Rust structs.
 
+[![Crates.io](https://img.shields.io/crates/v/play-files)](https://crates.io/crates/play-files)
+
+## Usage
+
+Add to your `Cargo.toml`:
+```
+play-files = "0.1"
+```
+Or
+```
+$ cargo add play-files
+```
 
 ## TODO
 Substantial:
